@@ -1,0 +1,3 @@
+[submodule "automlbenchmark"]
+	path = automlbenchmark
+	url = https://github.com/openml/automlbenchmark.git
