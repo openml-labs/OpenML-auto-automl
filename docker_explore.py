@@ -1,18 +1,24 @@
 # %%
-import time
-import openml
-import pandas as pd
-import os
-import subprocess
-from tqdm.auto import tqdm
-import re
-from pathlib import Path
+
+from dash import dcc, html
+from dash.dependencies import Input, Output
 from datetime import datetime
+from fastapi import FastAPI, Query
+from fastapi.responses import HTMLResponse, JSONResponse
 from glob import glob
+from httpx import ConnectTimeout
 from pathlib import Path
+from starlette.middleware.wsgi import WSGIMiddleware
+from tenacity import retry, retry_if_exception_type, stop_after_attempt
+from tqdm.auto import tqdm
+from typing import Optional
+import dash
+import dash_bootstrap_components as dbc
 import json
-
-
+import openml
+import os
+import pandas as pd
+import plotly.express as px
 # %%
 class AutoMLRunner:
     def __init__(
@@ -133,46 +139,107 @@ class AutoMLRunner:
     def __call__(self):
         self.run_benchmark_on_all_datasets()
 
-class VisualizationGenerator:
-    def __init__(self, test_mode_subset = 10) -> None:
+
+class DatasetAutoMLVisualizationGenerator:
+    def __init__(self, test_mode_subset=10):
         self.test_mode_subset = test_mode_subset
         self.experiment_directory = Path("./automlbenchmark/results/*")
-        if not self.experiment_directory.exists():
-            raise FileNotFoundError()
-        
+        # if not self.experiment_directory.exists():
+        # raise FileNotFoundError()
+
         self.all_run_paths = glob(pathname=str(self.experiment_directory))
         if self.test_mode_subset == True:
             # Get a subset of paths for testing
-            self.all_run_paths = self.all_run_paths[:min(self.test_mode_subset, len(self.all_run_paths))] 
-    
+            self.all_run_paths = self.all_run_paths[
+                : min(self.test_mode_subset, len(self.all_run_paths))
+            ]
+
+        self.all_results = pd.DataFrame()
+
+    def get_openml_task_id_from_string(self, string):
+        try:
+            return int(string.split("/")[-1])
+        except:
+            return None
+
+    def get_dataset_id_from_task_id(self, string):
+        task_id = self.get_openml_task_id_from_string(string=string)
+        if task_id is not None:
+            try:
+                return openml.tasks.get_task(
+                    task_id=task_id,
+                    download_data=False,
+                    download_qualities=False,
+                    download_splits=False,
+                    download_features_meta_data=False,
+                ).dataset_id
+            except:
+                return None
+        else:
+            return None
+
     def get_all_run_info(self):
-        for run_path in self.all_run_paths:
+        for run_path in tqdm(self.all_run_paths, total=len(self.all_run_paths)):
             run_path = Path(run_path)
-            results_file = self.safe_load_file(run_path/"results.csv", "pd")
-            # folders with metadata and results for folds
-            folds_subfolders = glob(str(run_path/"predictions/*/*"))
-            # per fold metadata
-            self.get_fold_data(folds_subfolders)
-    
+            results_file_path = run_path / "results.csv"
+            results_file = self.safe_load_file(results_file_path, "pd")
+            if results_file is not None:
+                self.all_results = pd.concat([self.all_results, results_file])
+
+            self.all_results["dataset_id"] = self.all_results["id"].apply(
+                self.get_dataset_id_from_task_id
+            )
+
     def safe_load_file(self, file_path, file_type):
         if file_type == "json":
             try:
-                with open(Path(file_type), "r") as f:
+                with open(str(Path(file_type)), "r") as f:
                     return json.load(f)
             except:
                 return None
         elif file_type == "pd":
             try:
-                return pd.read_csv(file_path)
+                return pd.read_csv(str(file_path))
             except:
                 return None
         else:
             raise NotImplementedError
+    
+    def create_dash_app_for_dataset(self, dataset_id):
+        # all_datasets = self.all_results["dataset_id"].unique()
+        # for all datasets, use the dash app layout to create a dashboard and save it to an html file
+        # for dataset in all_datasets:
+        dataset_results = self.all_results[self.all_results["dataset_id"] == dataset_id]
+        app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP], requests_pathname_prefix="/dash/")
+        app.layout = self.dash_app_layout(dataset_results)
+        return app
 
-    def get_fold_data(self, folds_subfolders):
-        for fold_folder in folds_subfolders:
-            metadata_json = self.safe_load_file(Path(fold_folder)/"metadata.json", "json")
-            fold_results = self.safe_load_file(Path(fold_folder/"results.csv"), "pd")
+
+    def dash_app_layout(self, df):
+        return html.Div([
+            html.H1("Framework Performance Dashboard"),
+
+            # show accuracy of each framework
+            html.H3("Accuracy of each framework"),
+            dcc.Graph(
+                id="acc-task",
+                figure=px.bar(
+                    df,
+                    x="task",
+                    y="acc",
+                    color="framework",
+                ),
+            ),
+
+            # Table to display detailed results
+            html.H3("Detailed Results"),
+            html.Table([
+                html.Tr([html.Th(col) for col in df.columns]),
+                html.Tbody([
+                    html.Tr([html.Td(df.iloc[i][col]) for col in df.columns]) for i in range(len(df))
+                ])
+            ])
+        ])
 
 # %%
 tf = AutoMLRunner(
@@ -183,3 +250,32 @@ tf = AutoMLRunner(
     save_every_n_tasks=1,
 )
 # tf()
+
+# Initialize FastAPI
+app = FastAPI()
+
+# Initialize DatasetAutoMLVisualizationGenerator
+visualization_generator = DatasetAutoMLVisualizationGenerator()
+visualization_generator.get_all_run_info()
+
+# Dash app instance is created once and mounted globally.
+dash_app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP], requests_pathname_prefix="/dash/")
+app.mount("/dash", WSGIMiddleware(dash_app.server))
+
+@app.get("/automlbplot", response_class=HTMLResponse)
+@retry(stop=stop_after_attempt(3), retry=retry_if_exception_type(ConnectTimeout))
+async def automl_plot(q: Optional[int] = Query(None, description="Dataset ID")):
+    """Route to serve the Dash app based on the dataset_id passed as a query parameter."""
+    if q is None:
+        return HTMLResponse(content="Error: 'q' (dataset_id) query parameter is required", status_code=400)
+
+    # Fetch data for the given dataset_id
+    dataset_results = visualization_generator.all_results[visualization_generator.all_results["dataset_id"] == q]
+
+    if dataset_results.empty:
+        return HTMLResponse(content=f"No results found for dataset_id {q}", status_code=404)
+    
+    dash_app.layout = visualization_generator.dash_app_layout(dataset_results)
+
+
+    return dash_app.index()
