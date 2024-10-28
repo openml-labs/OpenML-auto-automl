@@ -51,7 +51,9 @@ class AutoMLRunner:
         self.datasets = self._load_datasets()
         # Limit datasets if testing
         if self.testing_mode:
-            self.datasets = self.datasets.head(10)
+            # shuffle the datasets
+            self.datasets = self.datasets.sample(frac=1)
+            self.datasets = self.datasets.head(40)
 
     def _check_run_mode(self):
         valid_modes = ["local", "aws", "docker", "singularity"]
@@ -90,6 +92,7 @@ class AutoMLRunner:
             )
             # Filter tasks to only include 10-fold Crossvalidation
             tasks = tasks[tasks["estimation_procedure"] == "10-fold Crossvalidation"]
+            tasks["tid"] = tasks["tid"].astype(int)
             return (
                 tasks["tid"].head(self.num_tasks_to_return).tolist()
                 if not tasks.empty
@@ -100,7 +103,11 @@ class AutoMLRunner:
             # return None
             print(f"Trying to create a task for dataset {dataset_id}")
             task_id = self.task_handler.try_create_task(dataset_id)
-            return [task_id] if task_id else None
+            try:
+                int(task_id)
+            except:
+                return None
+            return [int(task_id)] if task_id else None
 
     def run_all_benchmarks_on_task(self, task_id, dataset_id):
         """Run benchmarks on a task."""
@@ -119,14 +126,13 @@ class AutoMLRunner:
                     f"openml/t/{task_id}",
                     "--mode",
                     self.run_mode,
-                    "--output_dir",
-                    f"../data/results/",
 
                 ]
                 if self.testing_mode:
                     command.insert(
                         -2, "test"
                     )  # Insert test mode before the last parameter
+                command.extend(["-o", f"../data/results/"])
 
                 print(f"Running command: {' '.join(command)}")
                 os.popen(" ".join(command)).read()

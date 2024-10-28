@@ -81,16 +81,47 @@ class DatasetAutoMLVisualizationGenerator:
         return html.Div(
             [
                 html.H1("Framework Performance Dashboard"),
-                # show metric of each framework
-                html.H3(f"{metric_used} of each framework"),
-                dcc.Graph(
-                    id=f"{metric_used}-task",
-                    figure=px.bar(
-                        df,
-                        x="task",
-                        y="result",
-                        color="framework",
-                    ),
+                # Grid container for the metrics and graphs
+                html.Div(
+                    [
+                        html.Div(
+                            [
+                                html.H3(f"{metric_used.upper()} of each framework"),
+                                dcc.Graph(
+                                    id=f"{metric_used.upper()}-task",
+                                    figure=px.bar(
+                                        df,
+                                        x="task",
+                                        y="result",
+                                        color="framework",
+                                        barmode="group",
+                                    ),
+                                ),
+                            ],
+                            style={"grid-column": "1"},
+                        ),  # Column 1
+                        html.Div(
+                            [
+                                html.H3("Predict Duration of each framework"),
+                                dcc.Graph(
+                                    id="predict-duration-task",
+                                    figure=px.bar(
+                                        df,
+                                        x="framework",
+                                        y="predict_duration",
+                                        color="framework",
+                                        barmode="group",
+                                    ),
+                                ),
+                            ],
+                            style={"grid-column": "2"},
+                        ),  # Column 2
+                    ],
+                    style={
+                        "display": "grid",
+                        "grid-template-columns": "1fr 1fr",  # Two equal-width columns
+                        "gap": "20px",  # Spacing between columns
+                    },
                 ),
                 # Table to display detailed results
                 html.H3("Detailed Results"),
