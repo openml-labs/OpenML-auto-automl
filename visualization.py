@@ -7,7 +7,7 @@ from pathlib import Path
 from starlette.middleware.wsgi import WSGIMiddleware
 from tenacity import retry, retry_if_exception_type, stop_after_attempt
 from tqdm.auto import tqdm
-from typing import Optional
+from typing import Optional, Union
 import dash
 import dash_bootstrap_components as dbc
 import json
@@ -76,67 +76,138 @@ class DatasetAutoMLVisualizationGenerator:
         app.layout = self.dash_app_layout(dataset_results)
         return app
 
-    def dash_app_layout(self, df):
-        metric_used = df["metric"].unique()[0]
+    def dash_app_layout(self,df: pd.DataFrame) -> Union[html.Div, str]:
+        required_columns = {"metric", "result", "framework", "dataset_id", "id", "task", "predict_duration"}
+        # if framework is duplicated, take the one with the best result
+        df = df.drop_duplicates(subset=["framework", "result"], keep="first")
+        
+        # Add missing columns with "N/A" values
+        for column in required_columns:
+            if column not in df.columns:
+                df[column] = "N/A"
+
+        # Set the metric used, or 'N/A' if the column doesn't exist
+        metric_used = df["metric"].unique()[0] if "metric" in df.columns and not df["metric"].empty else "N/A"
+        try:
+            df[metric_used]
+        except KeyError:
+            df[metric_used] = "N/A"
+
+        if metric_used == "auc":
+            best_result_for_metric = df[metric_used].max() if metric_used != "N/A" else "N/A"
+            best_result_for_score = df["result"].max()
+        elif metric_used == "neg_logloss":
+            best_result_for_metric = df[metric_used].min() if metric_used != "N/A" else "N/A"
+            best_result_for_score = df["result"].max()
+        else:
+            print(f"Unknown metric {metric_used}")
+            best_result_for_metric = df[metric_used].max() if metric_used != "N/A" else "N/A"
+            best_result_for_score = df["result"].max()
+        
+        # row with the best result for the metric
+        best_result_row = df[df[metric_used] == best_result_for_metric]
+        best_result_framework = best_result_row["framework"].values[0] if not best_result_row.empty else "N/A"
+
+        # row with the best score
+        best_result_row_score = df[df["result"] == best_result_for_score]
+        best_score_framework = best_result_row_score["framework"].values[0] if not best_result_row_score.empty else "N/A"
+        # Create table rows only if data exists and is not "N/A"
+        details_rows = [
+            html.Tr([html.Th("Frameworks Used"), html.Td(", ".join(df["framework"].unique()))])
+            if df["framework"].unique()[0] != "N/A" else None,
+            html.Tr([html.Th("Metric Used"), html.Td(metric_used)]) if metric_used != "N/A" else None,
+            html.Tr([html.Th(f"Best Framework by {metric_used}"), html.Td(best_result_framework)]),
+            html.Tr([html.Th("Best Framework by Score"), html.Td(best_score_framework)]),
+        ]
+        color_palette_for_plots = px.colors.qualitative.Safe
+
+        # Filter out None entries (empty rows) from details table
+        details_rows = [row for row in details_rows if row]
+
         return html.Div(
-            [
-                html.H1("Framework Performance Dashboard"),
-                # Grid container for the metrics and graphs
+            style={"padding": "20px", "max-width": "1200px", "margin": "0 auto", "font-family": "Arial, sans-serif", "line-height": "1.6"},
+            children=[
                 html.Div(
                     [
-                        html.Div(
+                        html.H1("Run Details", style={"margin-bottom": "10px", "text-align": "center"}),
+                        html.Ul(
                             [
-                                html.H3(f"{metric_used.upper()} of each framework"),
-                                dcc.Graph(
-                                    id=f"{metric_used.upper()}-task",
-                                    figure=px.bar(
-                                        df,
-                                        x="task",
-                                        y="result",
-                                        color="framework",
-                                        barmode="group",
-                                    ),
-                                ),
-                            ],
-                            style={"grid-column": "1"},
-                        ),  # Column 1
-                        html.Div(
-                            [
-                                html.H3("Predict Duration of each framework"),
-                                dcc.Graph(
-                                    id="predict-duration-task",
-                                    figure=px.bar(
-                                        df,
-                                        x="framework",
-                                        y="predict_duration",
-                                        color="framework",
-                                        barmode="group",
-                                    ),
-                                ),
-                            ],
-                            style={"grid-column": "2"},
-                        ),  # Column 2
-                    ],
-                    style={
-                        "display": "grid",
-                        "grid-template-columns": "1fr 1fr",  # Two equal-width columns
-                        "gap": "20px",  # Spacing between columns
-                    },
-                ),
-                # Table to display detailed results
-                html.H3("Detailed Results"),
-                html.Table(
-                    [
-                        html.Tr([html.Th(col) for col in df.columns]),
-                        html.Tbody(
-                            [
-                                html.Tr(
-                                    [html.Td(df.iloc[i][col]) for col in df.columns]
+                                html.Li(
+                                    [
+                                        html.A(
+                                            "Dataset on OpenML",
+                                            href=f"https://www.openml.org/search?type=data&sort=runs&id={df.iloc[0]['dataset_id']}&status=active",
+                                            target="_blank",
+                                        ),
+                                    ]
                                 )
-                                for i in range(len(df))
-                            ]
+                                if df.iloc[0]["dataset_id"] != "N/A"
+                                else None,
+                                html.Li(
+                                    [
+                                        html.A(
+                                            "Task on OpenML",
+                                            href=f"https://{df.iloc[0]['id']}",
+                                            target="_blank",
+                                        ),
+                                    ]
+                                )
+                                if df.iloc[0]["id"] != "N/A"
+                                else None,
+                            ], style={ "list-style-type": "none", "padding": "0", "margin": "0", "text-align": "center", "margin-top": "10px"}
                         ),
-                    ]
+                        dbc.Table(details_rows, bordered=True, hover=True, striped=True, 
+                                style={"width": "60%", "overflow-x": "auto", "margin": "0 auto", "border": "1px solid #ddd"})
+                    ], style={"margin-top": "20px"}
                 ),
-            ]
+                # Dashboard Section
+                html.Div(
+                    [
+                        html.H1("Framework Performance Dashboard", style={"text-align": "center", "margin-bottom": "20px", "margin-top": "20px"}),
+                        html.Div(
+                            [
+                                html.Div(
+                                    [
+                                        html.H3(f"{metric_used.upper()} of each Framework", style={"text-align": "center"}),
+                                       dcc.Graph(
+                                            id=f"{metric_used.upper()}-task",
+                                            figure=px.bar(df, x="task", y="result", color="framework", barmode="group", color_discrete_sequence=color_palette_for_plots, labels={"result": metric_used}),
+                                        ),
+                                    ], style={"grid-column": "1"},
+                                ),
+                                html.Div(
+                                    [
+                                        html.H3("Predict Duration of each Framework", style={"text-align": "center"}),
+                                        dcc.Graph(
+                                            id="predict-duration-task",
+                                            figure=px.bar(df, x="framework", y="predict_duration", color="framework", barmode="group", color_discrete_sequence=color_palette_for_plots, labels={"predict_duration": "Predict Duration (s)"}),
+                                        ),
+                                    ], style={"grid-column": "2"},
+                                ),
+                                  html.Div(
+                                [
+                                    html.H3("Performance of each Framework", style={"text-align": "center"}),
+                                    dcc.Graph(
+                                        id="framework-performance",
+                                        figure=px.bar(df, x="framework", y="result", color="framework", barmode="group", color_discrete_sequence=color_palette_for_plots,),
+                                    ),
+                                ], style={"grid-column": "1"},
+                        ),
+                            ], style={"display": "grid", "grid-template-columns": "1fr 1fr", "gap": "30px", "margin-bottom": "40px"} ),
+                            # graph for task vs result
+
+                          
+                        
+                    ],
+                ),
+                html.Div(
+                    [
+                        html.H1("Detailed Results", style={"margin-bottom": "10px", "text-align": "center"}),
+                        html.Div(
+                            dbc.Table.from_dataframe(df, striped=True, bordered=True, hover=True),
+                            style={"overflow-x": "auto", "margin": "0 auto", "border": "1px solid #ddd"}
+                        ),
+                    ], style={"margin-top": "40px"}
+                ),
+            ],
         )
