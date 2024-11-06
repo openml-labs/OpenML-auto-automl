@@ -20,14 +20,25 @@ import plotly.express as px
 import sqlite3
 from utils import OpenMLTaskHandler, SQLHandler
 from visualization import DatasetAutoMLVisualizationGenerator
-
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.interval import IntervalTrigger
 
 # Initialize FastAPI
 app = FastAPI()
 
 # Initialize DatasetAutoMLVisualizationGenerator
 visualization_generator = DatasetAutoMLVisualizationGenerator()
-visualization_generator.get_all_run_info()
+
+# Function to run every hour
+def scheduled_run_info():
+    visualization_generator.get_all_run_info()
+
+scheduled_run_info()
+
+# Schedule the job
+scheduler = BackgroundScheduler()
+scheduler.start()
+scheduler.add_job(scheduled_run_info, IntervalTrigger(hours=1))
 
 # Dash app instance is created once and mounted globally.
 dash_app = dash.Dash(
@@ -36,7 +47,6 @@ dash_app = dash.Dash(
     requests_pathname_prefix="/dash/",
 )
 app.mount("/dash", WSGIMiddleware(dash_app.server))
-
 
 @app.get("/automlbplot", response_class=HTMLResponse)
 @retry(stop=stop_after_attempt(3), retry=retry_if_exception_type(ConnectTimeout))

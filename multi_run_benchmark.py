@@ -35,7 +35,7 @@ class AutoMLRunner:
         self.num_tasks_to_return = num_tasks_to_return
         self.use_cache = use_cache
         self.save_every_n_tasks = save_every_n_tasks
-        self.benchmarks_to_use = ["randomforest", "gama"]
+        self.benchmarks_to_use = ["autosklearn","randomforest"]
         self.run_mode = run_mode
         self.db_path = db_path  # SQLite database path
         self._initialize()
@@ -51,9 +51,8 @@ class AutoMLRunner:
         self.datasets = self._load_datasets()
         # Limit datasets if testing
         if self.testing_mode:
-            # shuffle the datasets
-            self.datasets = self.datasets.sample(frac=1)
-            self.datasets = self.datasets.head(40)
+            # self.datasets = self.datasets.sample(frac=1)
+            self.datasets = self.datasets.head(10)
 
     def _check_run_mode(self):
         valid_modes = ["local", "aws", "docker", "singularity"]
