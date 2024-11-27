@@ -19,6 +19,7 @@ import sqlite3
 from utils import OpenMLTaskHandler, SQLHandler
 import argparse
 
+
 class AutoMLRunner:
     def __init__(
         self,
@@ -35,7 +36,20 @@ class AutoMLRunner:
         self.num_tasks_to_return = num_tasks_to_return
         self.use_cache = use_cache
         self.save_every_n_tasks = save_every_n_tasks
-        self.benchmarks_to_use = ["autosklearn","randomforest"]
+        self.benchmarks_to_use = [
+            "autosklearn",
+            "autoweka",
+            "decisiontree",
+            "flaml",
+            "gama",
+            "h2oautoml",
+            "hyperoptsklearn",
+            "lightautoml",
+            "oboe",
+            "randomforest",
+            "tpot",
+            "autogluon",
+        ]
         self.run_mode = run_mode
         self.db_path = db_path  # SQLite database path
         self._initialize()
@@ -52,7 +66,7 @@ class AutoMLRunner:
         # Limit datasets if testing
         if self.testing_mode:
             # self.datasets = self.datasets.sample(frac=1)
-            self.datasets = self.datasets.head(10)
+            self.datasets = self.datasets.head(5)
 
     def _check_run_mode(self):
         valid_modes = ["local", "aws", "docker", "singularity"]
@@ -125,7 +139,6 @@ class AutoMLRunner:
                     f"openml/t/{task_id}",
                     "--mode",
                     self.run_mode,
-
                 ]
                 if self.testing_mode:
                     command.insert(
@@ -164,6 +177,7 @@ class AutoMLRunner:
 
     def __call__(self):
         self.run_benchmark_on_all_datasets()
+
 
 ags = argparse.ArgumentParser()
 ags.add_argument("--testing_mode", type=bool, default=True)

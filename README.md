@@ -4,7 +4,9 @@
 - Still a work in progress.
 
 ## Instructions
-- Install the requirements using `pip install -r requirements.txt`
+- Clone the repository
+- Install poetry
+- Install the requirements using `poetry install`
 - Run the AutoMLRunner class with your chosen arguments : `python multi_run_benchmark.py --testing_mode=False`
   - Possible arguments:
     - testing_mode: If True, only the first 10 datasets will be used.

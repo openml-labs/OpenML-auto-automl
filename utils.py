@@ -16,15 +16,9 @@ import os
 import pandas as pd
 import plotly.express as px
 import sqlite3
-# openml.config.apikey = openml.config.get_config_as_dict()['apikey']
 
-# print(openml.config.get_config_as_dict())
 
 class OpenMLTaskHandler:
-    # def __init__(self):
-        # if self.check_if_api_key_is_valid() == False:
-            # print("API key is not set. Please set the API key using openml.config.apikey = 'your-key'")
-        # exit()
 
     def get_target_col_type(self, dataset, target_col_name):
         try:
@@ -40,14 +34,6 @@ class OpenMLTaskHandler:
         except Exception as e:
             print(f"Error getting target column type: {e}")
             return None
-
-    # def check_if_api_key_is_valid(self):
-    #     if not openml.config.get_config_as_dict()["apikey"]:
-    #         print(
-    #             "API key is not set. Please set the API key using openml.config.apikey = 'your-key'"
-    #         )
-    #         return False
-    #     return True
 
     def try_create_task(self, dataset_id):
         try:
@@ -78,7 +64,7 @@ class OpenMLTaskHandler:
                 print(f"Task created: {task}, task_id: {task.task_id}")
                 return task.task_id
                 # else:
-                    # return None
+                # return None
             else:
                 return None
 

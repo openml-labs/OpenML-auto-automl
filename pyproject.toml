@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "openml-auto-automl"
+version = "0.1.0"
+description = "Automatic running of AutoML benchmark on OpenML datasets"
+authors = ["SubhadityaMukherjee <msubhaditya@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+dash = "^2.18.2"
+plotly = "^5.24.1"
+pandas = "^2.2.3"
+tqdm = "^4.67.1"
+openml = "^0.15.0"
+fastapi = "^0.115.5"
+tenacity = "^9.0.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
