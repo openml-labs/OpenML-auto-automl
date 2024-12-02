@@ -1,20 +1,4 @@
-from dash import dcc, html
-from fastapi import FastAPI, Query
-from fastapi.responses import HTMLResponse
-from glob import glob
-from httpx import ConnectTimeout
-from pathlib import Path
-from starlette.middleware.wsgi import WSGIMiddleware
-from tenacity import retry, retry_if_exception_type, stop_after_attempt
-from tqdm.auto import tqdm
-from typing import Optional
-import dash
-import dash_bootstrap_components as dbc
-import json
 import openml
-import os
-import pandas as pd
-import plotly.express as px
 import sqlite3
 
 

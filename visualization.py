@@ -16,6 +16,10 @@ import json
 from utils import OpenMLTaskHandler
 import pandas as pd
 import plotly.express as px
+import seaborn as sns
+import io
+import base64
+import matplotlib.pyplot as plt
 
 
 class DatasetAutoMLVisualizationGenerator:
@@ -126,10 +130,11 @@ class DatasetAutoMLVisualizationGenerator:
         grid_column="1",
         description=None,
         type="bar",
-        hover_data=None,
+        hover_data=None,  # Note: hover_data is not used in Seaborn plots
     ):
         """
-        This function generates a graph and heading for the dashboard. It returns a Div element containing the graph and heading or an empty Div element if an error occurs. This is used to generate plots for the dashboard.
+        This function generates a graph and heading for the dashboard using Seaborn.
+        It returns a Div element containing the graph and heading or an empty Div element if an error occurs.
         """
         try:
             if grid_column is not None:
@@ -149,54 +154,32 @@ class DatasetAutoMLVisualizationGenerator:
             if description is not None:
                 elements.append(html.P(description))
 
+            # Create the Seaborn plot
+            plt.figure(figsize=(10, 6))  # Adjust figure size as needed
+
             if type == "bar":
-                elements.append(
-                    dcc.Graph(
-                        id=graph_id,
-                        figure=px.bar(
-                            df,
-                            x=x,
-                            y=y,
-                            color=color,
-                            barmode="group",
-                            color_discrete_sequence=px.colors.qualitative.Safe,
-                            hover_data=hover_data,
-                        )
-                        .update_traces(
-                            hoverlabel=dict(
-                                font_color="black",  # Set hover text color to white
-                                bgcolor="white",
-                            ),
-                        )
-                        .update_layout(
-                            bargap=0.01,
-                            xaxis=dict(
-                                tickfont=dict(
-                                    size=10
-                                )  # Reduce font size of x-axis labels
-                            ),
-                        ),
-                    ),
-                )
+                sns.barplot(data=df, x=x, y=y, hue=color, palette="muted")
             elif type == "scatter":
-                elements.append(
-                    dcc.Graph(
-                        id=graph_id,
-                        figure=px.scatter(
-                            df,
-                            x=x,
-                            y=y,
-                            color=color,
-                            color_discrete_sequence=px.colors.qualitative.Safe,
-                            hover_data=hover_data,
-                        ).update_traces(
-                            hoverlabel=dict(
-                                font_color="black",  # Set hover text color to white
-                                bgcolor="white",
-                            ),
-                        ),
-                    ),
+                sns.scatterplot(data=df, x=x, y=y, hue=color, palette="muted")
+
+            plt.title(title)
+            plt.tight_layout()
+
+            # Save the plot to a buffer
+            buffer = io.BytesIO()
+            plt.savefig(buffer, format="png")
+            buffer.seek(0)
+            encoded_image = base64.b64encode(buffer.read()).decode()
+            buffer.close()
+            plt.close()
+
+            # Add the image to the Dash layout
+            elements.append(
+                html.Img(
+                    src=f"data:image/png;base64,{encoded_image}",
+                    style={"width": "100%"},
                 )
+            )
 
             return html.Div(
                 elements,
@@ -215,7 +198,7 @@ class DatasetAutoMLVisualizationGenerator:
                 html.Div(
                     [
                         html.H1(
-                            f"{framework_name} intermediate model results",
+                            f"{framework_name} intermediate model results" if framework_name != "All results" else "All model results",
                             style={
                                 "margin-bottom": "10px",
                                 "text-align": "center",
@@ -244,116 +227,153 @@ class DatasetAutoMLVisualizationGenerator:
         return html.Div(div_list)
 
     def dash_app_layout(self, df: pd.DataFrame) -> Union[html.Div, str]:
-
-        # Check for required columns
-        required_columns = {
-            "metric",
-            "result",
-            "framework",
-            "dataset_id",
-            "id",
-            "task",
-            "predict_duration",
-            "models",
-        }
-        # if framework is duplicated, take the one with the best result
-        df = df.drop_duplicates(subset=["framework"], keep="first")
-
-        # Add missing columns with "N/A" values
-        for column in required_columns:
-            if column not in df.columns:
-                df[column] = "N/A"
-
-        # Set the metric used, or 'N/A' if the column doesn't exist
-        metric_used = (
-            df["metric"].unique()[0]
-            if "metric" in df.columns and not df["metric"].empty
-            else "N/A"
-        )
         try:
-            df[metric_used]
-        except KeyError:
-            df[metric_used] = "N/A"
+            # Validate DataFrame
+            if df is None or df.empty:
+                return "Error: Provided DataFrame is empty or None."
 
-        metric_used_dict = {
-            "auc": lambda x: x.max(),
-            "neg_logloss": lambda x: x.min(),
-        }
-        best_result_for_metric = (
-            metric_used_dict[metric_used](df[metric_used])
-            if metric_used != "N/A"
-            else "N/A"
-        )
-        best_result_for_score = df["result"].max()
-        best_result_framework = df[df[metric_used] == best_result_for_metric][
-            "framework"
-        ].values[0]
-        best_score_framework = df[df["result"] == best_result_for_score][
-            "framework"
-        ].values[0]
-        # Create table rows only if data exists and is not "N/A"
-        details_rows = [
-            (
-                html.Tr(
-                    [
-                        html.Th("Frameworks Used"),
-                        html.Td(", ".join(df["framework"].unique())),
-                    ]
+            # Required columns
+            required_columns = {
+                "metric",
+                "result",
+                "framework",
+                "dataset_id",
+                "id",
+                "task",
+                "predict_duration",
+                "models",
+            }
+
+            # Handle duplicate frameworks by keeping the one with the best result
+            df = df.drop_duplicates(subset=["framework"], keep="first")
+
+            # Add missing columns with default values
+            for column in required_columns:
+                if column not in df.columns:
+                    df[column] = "N/A"
+
+            # Determine the metric used or set to "N/A" if unavailable
+            metric_used = (
+                df["metric"].unique()[0]
+                if "metric" in df.columns and not df["metric"].empty
+                else "N/A"
+            )
+            if metric_used not in df.columns:
+                df[metric_used] = "N/A"
+
+            # Define how to find the best result for the metric
+            metric_used_dict = {
+                "auc": lambda x: x.max(),
+                "neg_logloss": lambda x: x.min(),
+            }
+            best_result_for_metric = (
+                metric_used_dict[metric_used](df[metric_used])
+                if metric_used in metric_used_dict
+                else "N/A"
+            )
+            best_result_for_score = (
+                df["result"].max() if "result" in df.columns else "N/A"
+            )
+
+            # Identify best frameworks
+            try:
+                best_result_framework = (
+                    df[df[metric_used] == best_result_for_metric]["framework"].values[0]
+                    if best_result_for_metric != "N/A"
+                    else "N/A"
                 )
-                if df["framework"].unique()[0] != "N/A"
-                else None
-            ),
-            (
-                html.Tr([html.Th("Metric Used"), html.Td(metric_used)])
-                if metric_used != "N/A"
-                else None
-            ),
-            html.Tr(
-                [
-                    html.Th(f"Best Framework by {metric_used}"),
-                    html.Td(best_result_framework),
+            except IndexError:
+                best_result_framework = "N/A"
+
+            try:
+                best_score_framework = (
+                    df[df["result"] == best_result_for_score]["framework"].values[0]
+                    if best_result_for_score != "N/A"
+                    else "N/A"
+                )
+            except IndexError:
+                best_score_framework = "N/A"
+
+            # Generate table rows with error handling
+            details_rows = []
+            if "framework" in df.columns and df["framework"].unique()[0] != "N/A":
+                details_rows.append(
+                    html.Tr(
+                        [
+                            html.Th("Frameworks Used"),
+                            html.Td(", ".join(df["framework"].unique())),
+                        ]
+                    )
+                )
+            if metric_used != "N/A":
+                details_rows.append(
+                    html.Tr([html.Th("Metric Used"), html.Td(metric_used)])
+                )
+            if best_result_framework != "N/A":
+                details_rows.append(
+                    html.Tr(
+                        [
+                            html.Th(f"Best Framework by {metric_used}"),
+                            html.Td(best_result_framework),
+                        ]
+                    )
+                )
+            if best_score_framework != "N/A":
+                details_rows.append(
+                    html.Tr(
+                        [
+                            html.Th("Best Framework by Score"),
+                            html.Td(best_score_framework),
+                        ]
+                    )
+                )
+
+            # display df in a table
+
+            # Framework names and processing functions
+            framework_names = ["Auto-sklearn", "H20AutoML", "AutoGluon", "All results"]
+            process_fns = []
+            try:
+                process_fns = [
+                    self.process_auto_sklearn_data(df),
+                    self.get_rows_for_framework_from_df(
+                        df=df, framework_name="H20AutoML"
+                    ),
+                    self.get_rows_for_framework_from_df(
+                        df=df, framework_name="AutoGluon"
+                    ),
+                    self.get_rows_for_framework_from_df(
+                        df=df, framework_name="All results"
+                    ),
                 ]
-            ),
-            html.Tr(
-                [html.Th("Best Framework by Score"), html.Td(best_score_framework)]
-            ),
-        ]
+            except Exception as e:
+                print(f"Error processing frameworks: {e}")
+                process_fns = []
 
-        # Filter out None entries (empty rows) from details table
-        details_rows = [row for row in details_rows if row]
+            # Final Div
+            final_div = html.Div(
+                style={
+                    "padding": "20px",
+                    "max-width": "1200px",
+                    "margin": "0 auto",
+                    "font-family": "Arial, sans-serif",
+                    "line-height": "1.6",
+                },
+                children=[
+                    self.generate_automl_run_details(df, details_rows),
+                    self.generate_dashboard_section(df, metric_used),
+                    self.generate_model_vs_cost_for_frameworks(
+                        df_process_fns=process_fns, framework_names=framework_names
+                    ),
+                ],
+            )
 
-        # H20AutoML,AutoGluon
-        # dashboard fns and frameworks
-        framework_names = ["Auto-sklearn", "H20AutoML", "AutoGluon"]
-        process_fns = [
-            self.process_auto_sklearn_data(df),
-            # self.process_h20_data(),
-            self.get_rows_for_framework_from_df(df=df, framework_name="H20AutoML"),
-            self.get_rows_for_framework_from_df(df=df, framework_name="AutoGluon"),
-        ]
+            return final_div
 
-        # final div
-        final_div = html.Div(
-            style={
-                "padding": "20px",
-                "max-width": "1200px",
-                "margin": "0 auto",
-                "font-family": "Arial, sans-serif",
-                "line-height": "1.6",
-            },
-            children=[
-                # AutoML Run Details Table
-                self.generate_automl_run_details(df, details_rows),
-                self.generate_dashboard_section(df, metric_used),
-                # Dashboard Section
-                self.generate_model_vs_cost_for_frameworks(
-                    df_process_fns=process_fns, framework_names=framework_names
-                ),
-            ],
-        )
-
-        return final_div
-
+        except Exception as e:
+            print(f"Error in dash_app_layout: {e}")
+            return "An error occurred while generating the dashboard layout."
+        
     def generate_dashboard_section(self, df, metric_used):
         return html.Div(
             [
@@ -507,6 +527,8 @@ class DatasetAutoMLVisualizationGenerator:
 
     def get_rows_for_framework_from_df(self, df, framework_name, top_n=40):
         try:
+            if framework_name == "All results":
+                return df
             framework_rows = df[df["framework"] == framework_name]["models"].values[0]
             framework_data = self.safe_load_file(framework_rows, "pd")
             if top_n is not None:

@@ -1,0 +1,25 @@
+<!-- Latest compiled and minified CSS -->
+<link
+  rel="stylesheet"
+  href="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css"
+/>
+
+<!-- jQuery library -->
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+
+<!-- Latest compiled JavaScript -->
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"></script>
+
+<!-- show a table using {{ table_data }} and {{ table_name }}. style= 60% width, centered, striped, bordered, hover, responsive -->
+
+<div class="container">
+  <h2>{{ table_name }}</h2>
+  <div class="table-responsive">
+    <table
+      class="table table-striped table-bordered table-hover"
+      style="margin: 0 auto; height: 30%; overflow-x: auto; width: 60%"
+    >
+      {{ table_data }}
+    </table>
+  </div>
+</div>
