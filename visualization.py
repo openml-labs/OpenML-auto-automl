@@ -34,6 +34,9 @@ class DatasetAutoMLVisualizationGenerator:
         self.openml_task_handler = OpenMLTaskHandler()
 
     def get_all_run_info(self):
+        """
+        This function is responsible for loading all the results files from the runs and storing them in self.all_results. This is further used to generate the dashboard.
+        """
         all_results_list = []  # Temporary list to store individual DataFrames
 
         for run_path in tqdm(self.all_run_paths, total=len(self.all_run_paths)):
@@ -75,6 +78,9 @@ class DatasetAutoMLVisualizationGenerator:
             self.all_results = pd.concat(all_results_list, ignore_index=True)
 
     def safe_load_file(self, file_path, file_type) -> Union[pd.DataFrame, dict, None]:
+        """
+        This function is responsible for safely loading a file. It returns None if the file is not found or if there is an error loading the file.
+        """
         if file_type == "json":
             try:
                 with open(str(Path(file_path)), "r") as f:
@@ -96,9 +102,9 @@ class DatasetAutoMLVisualizationGenerator:
             raise NotImplementedError
 
     def create_dash_app_for_dataset(self, dataset_id):
-        # all_datasets = self.all_results["dataset_id"].unique()
-        # for all datasets, use the dash app layout to create a dashboard and save it to an html file
-        # for dataset in all_datasets:
+        """
+        This function is responsible for creating a Dash app for a specific dataset
+        """
         dataset_results = self.all_results[self.all_results["dataset_id"] == dataset_id]
         app = dash.Dash(
             __name__,
@@ -122,6 +128,9 @@ class DatasetAutoMLVisualizationGenerator:
         type="bar",
         hover_data=None,
     ):
+        """
+        This function generates a graph and heading for the dashboard. It returns a Div element containing the graph and heading or an empty Div element if an error occurs. This is used to generate plots for the dashboard.
+        """
         try:
             if grid_column is not None:
                 style = {"grid-column": grid_column}
