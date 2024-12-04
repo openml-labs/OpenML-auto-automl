@@ -1,5 +1,12 @@
 import openml
 import sqlite3
+import json
+import pandas as pd
+import io
+import base64
+from pathlib import Path
+from typing import Union
+import matplotlib.pyplot as plt
 
 
 class OpenMLTaskHandler:
@@ -127,3 +134,60 @@ class SQLHandler:
         )
         conn.commit()
         conn.close()
+
+
+def find_max_existing_dataset_id() -> int:
+    conn = sqlite3.connect("./data/runs.db")
+    c = conn.cursor()
+    c.execute("SELECT DISTINCT dataset_id FROM runs")
+    rows = c.fetchall()
+    conn.close()
+    return max([x[0] for x in rows]) if rows else 0
+
+
+def render_plot(dataset_results):
+    plt.figure(figsize=(10, 6))
+    sns.barplot(
+        data=dataset_results,
+        x="framework",
+        y="result",
+        hue="metric",
+        palette="muted",
+    )
+    plt.title("Results by Framework and Metric")
+    plt.tight_layout()
+
+    # Save plot to buffer
+    buffer = io.BytesIO()
+    plt.savefig(buffer, format="png")
+    buffer.seek(0)
+    encoded_image = base64.b64encode(buffer.read()).decode()
+    buffer.close()
+    plt.close()
+
+    return f"data:image/png;base64,{encoded_image}"
+
+
+def safe_load_file(file_path, file_type) -> Union[pd.DataFrame, dict, None]:
+    """
+    This function is responsible for safely loading a file. It returns None if the file is not found or if there is an error loading the file.
+    """
+    if file_type == "json":
+        try:
+            with open(str(Path(file_path)), "r") as f:
+                return json.load(f)
+        except:
+            return None
+    elif file_type == "pd":
+        try:
+            return pd.read_csv(str(file_path))
+        except:
+            return None
+    elif file_type == "textdict":
+        try:
+            with open(file_path, "r") as f:
+                return json.loads(f.read())
+        except:
+            return None
+    else:
+        raise NotImplementedError
