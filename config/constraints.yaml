@@ -1,9 +1,9 @@
 ---
 
 test:
-  folds: 1
-  max_runtime_seconds: 150
-  cores: 4
+  folds: 10
+  max_runtime_seconds: 100
+  cores: 8
 
 backup_test:
   folds: 2

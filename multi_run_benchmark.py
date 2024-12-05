@@ -18,6 +18,7 @@ import plotly.express as px
 import sqlite3
 from utils import OpenMLTaskHandler, SQLHandler
 import argparse
+from report_generator import run_report_script_for_all_datasets
 
 
 class AutoMLRunner:
@@ -30,6 +31,13 @@ class AutoMLRunner:
         save_every_n_tasks=1,
         db_path="data/runs.db",
     ):
+        # set paths
+        self.GENERATED_DATA_REPORT_DIR = Path("./data/generated_data_reports")
+        os.makedirs(self.GENERATED_DATA_REPORT_DIR, exist_ok=True)
+
+        self.GENERATED_REPORTS_DIR = Path("./data/generated_reports")
+        self.GENERATED_REPORTS_DIR.mkdir(exist_ok=True)
+
         self.testing_mode = testing_mode
         self.cache_file_name = "data/dataset_list.csv"
         self.global_results_store = {}
@@ -38,16 +46,16 @@ class AutoMLRunner:
         self.save_every_n_tasks = save_every_n_tasks
         self.benchmarks_to_use = [
             "autosklearn",
-            "autoweka",
-            "decisiontree",
-            "flaml",
+            # "autoweka",
+            # "decisiontree",
+            # "flaml",
             "gama",
             "h2oautoml",
-            "hyperoptsklearn",
-            "lightautoml",
-            "oboe",
-            "randomforest",
-            "tpot",
+            # "hyperoptsklearn",
+            # "lightautoml",
+            # "oboe",
+            # "randomforest",
+            # "tpot",
             "autogluon",
         ]
         self.run_mode = run_mode
@@ -174,6 +182,12 @@ class AutoMLRunner:
                 ):
                     # Run benchmarks on the task
                     self.run_all_benchmarks_on_task(task_id, dataset_id)
+
+            run_report_script_for_all_datasets(
+                self.GENERATED_DATA_REPORT_DIR,
+                self.GENERATED_REPORTS_DIR,
+                dataset_id=dataset_id,
+            )
 
     def __call__(self):
         self.run_benchmark_on_all_datasets()
