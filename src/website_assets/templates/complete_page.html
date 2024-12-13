@@ -1,0 +1,30 @@
+<!-- Latest compiled and minified CSS -->
+<link
+  rel="stylesheet"
+  href="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css"
+/>
+
+<!-- jQuery library -->
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+
+<!-- Latest compiled JavaScript -->
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"></script>
+<body>
+  <div class="container">
+    {dataset_info} 
+    {toc}
+    <div id="best-result">{best_result_table}</div>
+    <div id="feature-importance">{feature_importance}</div>
+    <div id="dashboard-section">{dashboard_section}</div>
+    <div id="explanation-and-whats-next">
+      <h1>Explanation and What's next?</h1>
+      <p>
+        !!! This is an AI-generated (llama3.2) explanation of the results.
+        Please take the response with a grain of salt and use your own
+        judgement.
+      </p>
+      {explanation}
+    </div>
+    <div id="framework-table">{framework_table}</div>
+  </div>
+</body>
