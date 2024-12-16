@@ -19,7 +19,6 @@ from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 from tqdm.auto import tqdm
 from typing import Optional, Union
-from utils import OpenMLTaskHandler
 import base64
 import dash
 import dash_bootstrap_components as dbc
@@ -39,9 +38,11 @@ import re
 import seaborn as sns
 import sqlite3
 from typing import Any
+from src.utils import OpenMLTaskHandler
 
 matplotlib.use("agg")
 set_visualize_provider(InlineProvider())
+
 
 
 def safe_load_file(file_path, file_type) -> Union[pd.DataFrame, dict, None]:
@@ -68,24 +69,9 @@ def safe_load_file(file_path, file_type) -> Union[pd.DataFrame, dict, None]:
     else:
         raise NotImplementedError
 
-
 class DataReportGenerator:
     def __init__(self, generated_ebm_report_dir):
         self.generated_ebm_report_dir = generated_ebm_report_dir
-
-    def generate_ebm_report(self, names, scores):
-        fig = px.bar(
-            x=names,
-            y=scores,
-            orientation="v",
-            color_discrete_sequence=px.colors.qualitative.Safe,
-        )
-        fig.update_layout(
-            title="Feature Importance", xaxis_title="Feature", yaxis_title="Score"
-        )
-        return fig.to_html(
-            full_html=False, include_plotlyjs="cdn", div_id="feature-importance"
-        )
 
     def run_ebm_on_dataset(self, dataset_id, X_train, y_train):
         try:
@@ -96,6 +82,12 @@ class DataReportGenerator:
             return self.generate_ebm_report(names, scores)
         except Exception as e:
             return "<div>Unable to generate feature importance report</div>"
+
+    def generate_ebm_report(self, names, scores):
+        df = pd.DataFrame({"Feature": names, "Score": scores})
+        # sort the features by score
+        df = df.sort_values(by="Score", ascending=False)
+        return to_html_datatable(df, index=False, table_id="feature-importance")
 
     def get_data_and_split(self, dataset_id):
         dataset = openml.datasets.get_dataset(dataset_id=dataset_id)
@@ -112,26 +104,21 @@ class DataReportGenerator:
         except Exception as e:
             return "<div>Unable to generate feature distribution</div>"
 
-    def class_imbalance(self, y):
-        try:
-            return to_html_datatable(pd.DataFrame(y).value_counts(), index=True)
-        except Exception as e:
-            return "<div>Unable to generate class imbalance report</div>"
-
     def get_missing_value_count(self, X):
         try:
-            return to_html_datatable(
-                pd.DataFrame(X.isnull().sum(), columns=["Missing Value Count"])
-            )
+            count = pd.DataFrame(X.isnull().sum(), columns=["Missing Value Count"])
+            count.sort_values(by="Missing Value Count", ascending=False, inplace=True)
+            return to_html_datatable(count, index=True)
         except Exception as e:
             return "<div>Unable to generate missing value count</div>"
 
     def generate_data_summary_table(self, X):
         cols = X.columns[:100]  # Limit to the first 100 columns
-        col_vizualization = {}
+        col_visualization = {}
 
         for col in cols:
             try:
+                X[col] = X[col].astype(str)
                 number_of_unique_values = len(X[col].unique())
 
                 # Handle small unique value counts with histograms
@@ -147,10 +134,8 @@ class DataReportGenerator:
                 else:
                     # Show the first 2 most frequent values and the rest as "other"
                     value_counts = X[col].value_counts()
-                    # Sort the values in descending order
                     value_counts = value_counts.sort_values(ascending=False)
                     if len(value_counts) > 2:
-                       
                         value_counts = pd.concat(
                             [
                                 value_counts[:2],
@@ -167,16 +152,16 @@ class DataReportGenerator:
                     )
                 # Convert figure to HTML
                 encoded_image = fig.to_html(full_html=False, include_plotlyjs="cdn")
-                col_vizualization[col] = encoded_image
+                col_visualization[col] = encoded_image
 
             except Exception as e:
                 # Log the error and use a placeholder for failed visualizations
-                col_vizualization[col] = ""
+                col_visualization[col] = ""
                 print(f"Error processing column '{col}': {str(e)}")
 
         try:
             # Create a DataFrame row for visualizations
-            visualization_row = pd.DataFrame([col_vizualization])
+            visualization_row = pd.DataFrame([col_visualization])
 
             # Insert the visualization row at the second position
             X_with_visualizations = pd.concat(
@@ -184,36 +169,93 @@ class DataReportGenerator:
             )
 
             if X_with_visualizations is not None:
-                html = X_with_visualizations.to_html(escape=False, classes="table table-bordered").replace(r"\n", "")
+                # Generate the table rows and columns
+                table_headers = "".join(
+                    ["<th>{}</th>".format(col) for col in X_with_visualizations.columns]
+                )
+                table_rows = "".join(
+                    [
+                        "<tr>"
+                        + "".join(["<td>{}</td>".format(cell) for cell in row])
+                        + "</tr>"
+                        for row in X_with_visualizations.values
+                    ]
+                )
 
-                headers = f"""
-                <html>
-                <!-- Bootstrap CSS -->
-                <link rel=\"stylesheet\" href=\"https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css\">
-
-                <!-- jQuery library -->
-                <script src=\"https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js\"></script>
-
-                <!-- Bootstrap JavaScript -->
-                <script src=\"https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js\"></script>
-
-                <!-- DataTables CSS and JS -->
-                <link rel=\"stylesheet\" href=\"https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css\">
-                <script src=\"https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js\"></script>
-
+                # Add JavaScript for pagination
+                html = f"""
                 <body>
-                    <div class=\"container\" style = \"overflow-x:auto;\">
-                    <h2>Data Summary Table</h2>
-                    <table id=\"dataTable\" class=\"table table-striped table-bordered\">
-                    """+html+"""
-                    </table>
-                </div>
+                    <div class="container" style="overflow-x:auto;">
+                        <h2>Data Summary Table</h2>
+                        <table id="dataTable" class="table table-striped table-bordered" style="display:none;">
+                            <thead>
+                                <tr>{table_headers}</tr>
+                            </thead>
+                            <tbody>
+                                {table_rows}
+                            </tbody>
+                        </table>
+                        <button id="prevBtn">Previous</button>
+                        <button id="nextBtn">Next</button>
+                    </div>
+                    """ + """
+                    <script>
+                        const table = document.getElementById('dataTable');
+                        const cols = table.querySelectorAll('thead th');
+                        const rows = table.querySelectorAll('tbody tr');
+                        const totalCols = cols.length;
+                        const colsPerPage = 10;
+                        let startCol = 0;
+
+                        function updateTable() {
+                            // Hide all columns
+                            cols.forEach((col, index) => {
+                                col.style.display = 'none';
+                            });
+                            rows.forEach(row => {
+                                Array.from(row.children).forEach((cell, index) => {
+                                    cell.style.display = 'none';
+                                });
+                            });
+
+                            // Show only the columns for the current page
+                            for (let i = startCol; i < Math.min(startCol + colsPerPage, totalCols); i++) {
+                                cols[i].style.display = '';
+                                rows.forEach(row => {
+                                    row.children[i].style.display = '';
+                                });
+                            }
+
+                            // Show/hide pagination buttons
+                            document.getElementById('prevBtn').disabled = startCol === 0;
+                            document.getElementById('nextBtn').disabled = startCol + colsPerPage >= totalCols;
+                        }
+
+                        document.getElementById('prevBtn').addEventListener('click', () => {
+                            if (startCol > 0) {
+                                startCol -= colsPerPage;
+                                updateTable();
+                            }
+                        });
+
+                        document.getElementById('nextBtn').addEventListener('click', () => {
+                            if (startCol + colsPerPage < totalCols) {
+                                startCol += colsPerPage;
+                                updateTable();
+                            }
+                        });
+
+                        // Initialize the table
+                        table.style.display = '';
+                        updateTable();
+                    </script>
                 </body>
-                </html>
                 """
-                return headers
+                return html
+
         except Exception as e:
             return "<div>Unable to generate data summary table</div>"
+
 
     def generate_data_report_for_dataset(self, dataset_id):
         report_path = f"{self.generated_ebm_report_dir}/{dataset_id}_report.html"
@@ -225,23 +267,31 @@ class DataReportGenerator:
 
                 ebm_report = self.run_ebm_on_dataset(dataset_id, X_train, y_train)
                 missing_value_count = self.get_missing_value_count(X)
+
+                # combine the feature distribution and class imbalance reports if they are pd.DataFrame
+                # if isinstance(missing_value_count, pd.DataFrame) and isinstance(ebm_report, pd.DataFrame):
+                #     # ebm_report = pd.concat([missing_value_count, ebm_report], axis=1)
+                #     # merge
+                #     ebm_report = pd.merge(ebm_report, missing_value_count, left_index=True, right_index=True)
+                #     ebm_report = to_html_datatable(ebm_report, index=True,table_id="feature-importance-missing-value")
                 # feature_distribution = self.get_feature_distribution(X)
                 # class_imbalance_report = self.class_imbalance(y)
                 data_summary_table = self.generate_data_summary_table(X)
 
                 report_html = f"""
-                    <h1>Extra Dataset Information</h1>
-                    <div>
-                    {data_summary_table}
-                    </div>
-                    <h2>Missing Value Count</h2>
-                    {missing_value_count} 
-                    <h2>Feature Importance</h2>
-                    <div id='feature-importance' style='overflow-x: auto; max-width: 100%;'>
-                    {ebm_report}
-                    </div>
-                
-                    </div>
+                        <h1>Extra Dataset Information</h1>
+                        <div>
+                            {data_summary_table}
+                        </div>
+                        <h2>Additional Details</h2>
+                        <h2>Feature Importance</h2>
+                        <div>
+                            {ebm_report}
+                        </div>
+                        <h2>Missing Value Count</h2>
+                        <div>
+                            {missing_value_count}
+                        </div>
                     """
 
                 report_path = (
@@ -361,12 +411,13 @@ class GenerateCompleteReportForDataset:
         collector_results,
         GENERATED_REPORTS_DIR: str = "../data/generated_reports",
         GENERATED_DATA_REPORT_DIR: str = "../data/generated_data_reports",
+        template_dir = "./website_assets/templates/",
     ):
         self.dataset_id = dataset_id
         self.collector_results = collector_results
         self.current_results = self.get_results_for_dataset_id(self.dataset_id)
         self.jinja_environment = Environment(
-            loader=FileSystemLoader("./website_assets/templates/")
+            loader=FileSystemLoader(template_dir)
         )
         self.generated_final_reports_dir = GENERATED_REPORTS_DIR
         self.generated_data_reports_dir = GENERATED_DATA_REPORT_DIR
@@ -569,7 +620,7 @@ class GenerateCompleteReportForDataset:
                     df.drop("dataset_description", axis=1)
                 except:
                     pass
-                return to_html_datatable(df, caption="All Results")
+                return to_html_datatable(df, caption="Results by AutoML Framework", table_id="all-framework-results")
             framework_rows: pd.DataFrame = df[df["framework"] == framework_name][
                 "models"
             ].values[0]
@@ -732,27 +783,12 @@ class GenerateCompleteReportForDataset:
         except FileNotFoundError:
             return "<div><p>Feature importance not available for this dataset</p></div>"
 
-    def generate_table_of_contents(self):
-        return f"""
-        <div class="container" style="margin-top: 20px; text-align: left;">
-            <h1>Table of Contents</h1>
-            <ul>
-                <li><a href="#best-result">Best Result</a></li>
-                <li><a href="#feature-importance">Feature Importance</a></li>
-                <li><a href="#dashboard-section">Dashboard Section</a></li>
-                <li><a href="#explanation-and-whats-next">Explanation and What's next?</a></li>
-                <li><a href="#framework-table">Framework Table</a></li>
-            </ul>
-        </div>
-        """
-
     def generate_download_current_page_button(self):
         return f"""
         <a href="report_{self.dataset_id}.html" download="report_{self.dataset_id}.html" class="btn btn-primary">Download Report</a>
         """
 
     def __call__(self):
-        toc = self.generate_table_of_contents()
         dataset_info = self.generate_dataset_info()
         best_result_table = self.generate_best_result_table()
         framework_table = self.generate_framework_table()
@@ -760,41 +796,16 @@ class GenerateCompleteReportForDataset:
         explanation = self.get_explanation_from_llm()
         feature_importance = self.get_data_report()
         # download_button = self.generate_download_current_page_button()
-        combined_html = f"""
-        <!-- Latest compiled and minified CSS -->
-        <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css">
-
-        <!-- jQuery library -->
-        <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
-
-        <!-- Latest compiled JavaScript -->
-        <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"></script>
-        <body>
-        <div class="container">
-        {dataset_info}
-        {toc}
-        <div id="best-result">
-        {best_result_table}
-        </div>
-        <div id="feature-importance">
-        {feature_importance}
-        </div>
-        <div id="dashboard-section">
-        {dashboard_section}
-        </div>
-        <div id="explanation-and-whats-next">
-        <h1>Explanation and What's next?</h1>
-        <p>!!! This is an AI-generated (llama3.2) explanation of the results. Please take the response with a grain of salt and use your own judgement.</p>
-        {explanation}
-        </div>
-        <div id="framework-table">
-        {framework_table}
-        </div>
-
-        </div>
-        </body>
-        """
-
+        combined_html = self.jinja_environment.get_template(
+            "complete_page.html"
+        ).render(
+            dataset_info=dataset_info,
+            best_result_table=best_result_table,
+            framework_table=framework_table,
+            dashboard_section=dashboard_section,
+            explanation=explanation,
+            feature_importance=feature_importance,
+        )
         with open(
             Path(self.generated_final_reports_dir) / f"report_{self.dataset_id}.html",
             "w",
@@ -803,10 +814,10 @@ class GenerateCompleteReportForDataset:
 
 
 def run_report_script_for_dataset(
-    GENERATED_DATA_REPORT_DIR, GENERATED_REPORTS_DIR, dataset_id
+    GENERATED_DATA_REPORT_DIR, GENERATED_REPORTS_DIR, dataset_id, result_path, template_dir
 ):
     # collect all the results from the runs
-    collector = ResultCollector()
+    collector = ResultCollector(result_path)
     all_results = collector()
     drg = DataReportGenerator(GENERATED_DATA_REPORT_DIR)
     try:
@@ -818,6 +829,7 @@ def run_report_script_for_dataset(
             collector_results=all_results,
             GENERATED_DATA_REPORT_DIR=GENERATED_DATA_REPORT_DIR,
             GENERATED_REPORTS_DIR=GENERATED_REPORTS_DIR,
+            template_dir=template_dir,
         )()
     except Exception as e:
         print(f"Error generating report for dataset {dataset_id}: {str(e)}")

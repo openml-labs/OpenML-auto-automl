@@ -25,6 +25,8 @@ class AutoMLRunner:
 
         self.GENERATED_REPORTS_DIR = Path("../data/generated_reports")
         self.GENERATED_REPORTS_DIR.mkdir(exist_ok=True)
+        self.result_path = Path("./data/results/*")
+        self.template_dir = Path("./website_assets/templates/")
 
         self.testing_mode = testing_mode
         self.cache_file_name = "../data/dataset_list.csv"
@@ -177,6 +179,8 @@ class AutoMLRunner:
                 self.GENERATED_DATA_REPORT_DIR,
                 self.GENERATED_REPORTS_DIR,
                 dataset_id=dataset_id,
+                result_path = self.result_path,
+                template_dir = self.template_dir,
             )
 
     def __call__(self):
