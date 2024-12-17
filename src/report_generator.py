@@ -44,7 +44,6 @@ matplotlib.use("agg")
 set_visualize_provider(InlineProvider())
 
 
-
 def safe_load_file(file_path, file_type) -> Union[pd.DataFrame, dict, None]:
     """
     This function is responsible for safely loading a file. It returns None if the file is not found or if there is an error loading the file.
@@ -68,6 +67,7 @@ def safe_load_file(file_path, file_type) -> Union[pd.DataFrame, dict, None]:
             return None
     else:
         raise NotImplementedError
+
 
 class DataReportGenerator:
     def __init__(self, generated_ebm_report_dir):
@@ -146,7 +146,11 @@ class DataReportGenerator:
                     fig = px.pie(
                         names=value_counts.index,
                         values=value_counts.values,
+                    )
+                    fig.update_layout(
                         title=None,
+                        xaxis_title=col,
+                        yaxis_title=None,
                         width=300,
                         height=300,
                     )
@@ -183,10 +187,11 @@ class DataReportGenerator:
                 )
 
                 # Add JavaScript for pagination
-                html = f"""
+                html = (
+                    f"""
                 <body>
                     <div class="container" style="overflow-x:auto;">
-                        <h2>Data Summary Table</h2>
+                        <h2>Data Preview</h2>
                         <table id="dataTable" class="table table-striped table-bordered" style="display:none;">
                             <thead>
                                 <tr>{table_headers}</tr>
@@ -198,7 +203,8 @@ class DataReportGenerator:
                         <button id="prevBtn">Previous</button>
                         <button id="nextBtn">Next</button>
                     </div>
-                    """ + """
+                    """
+                    + """
                     <script>
                         const table = document.getElementById('dataTable');
                         const cols = table.querySelectorAll('thead th');
@@ -251,11 +257,11 @@ class DataReportGenerator:
                     </script>
                 </body>
                 """
+                )
                 return html
 
         except Exception as e:
             return "<div>Unable to generate data summary table</div>"
-
 
     def generate_data_report_for_dataset(self, dataset_id):
         report_path = f"{self.generated_ebm_report_dir}/{dataset_id}_report.html"
@@ -411,14 +417,12 @@ class GenerateCompleteReportForDataset:
         collector_results,
         GENERATED_REPORTS_DIR: str = "../data/generated_reports",
         GENERATED_DATA_REPORT_DIR: str = "../data/generated_data_reports",
-        template_dir = "./website_assets/templates/",
+        template_dir="./website_assets/templates/",
     ):
         self.dataset_id = dataset_id
         self.collector_results = collector_results
         self.current_results = self.get_results_for_dataset_id(self.dataset_id)
-        self.jinja_environment = Environment(
-            loader=FileSystemLoader(template_dir)
-        )
+        self.jinja_environment = Environment(loader=FileSystemLoader(template_dir))
         self.generated_final_reports_dir = GENERATED_REPORTS_DIR
         self.generated_data_reports_dir = GENERATED_DATA_REPORT_DIR
         self.template_to_use = {
@@ -620,7 +624,11 @@ class GenerateCompleteReportForDataset:
                     df.drop("dataset_description", axis=1)
                 except:
                     pass
-                return to_html_datatable(df, caption="Results by AutoML Framework", table_id="all-framework-results")
+                return to_html_datatable(
+                    df,
+                    caption="Results by AutoML Framework",
+                    table_id="all-framework-results",
+                )
             framework_rows: pd.DataFrame = df[df["framework"] == framework_name][
                 "models"
             ].values[0]
@@ -814,7 +822,11 @@ class GenerateCompleteReportForDataset:
 
 
 def run_report_script_for_dataset(
-    GENERATED_DATA_REPORT_DIR, GENERATED_REPORTS_DIR, dataset_id, result_path, template_dir
+    GENERATED_DATA_REPORT_DIR,
+    GENERATED_REPORTS_DIR,
+    dataset_id,
+    result_path,
+    template_dir,
 ):
     # collect all the results from the runs
     collector = ResultCollector(result_path)
