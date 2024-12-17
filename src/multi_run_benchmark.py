@@ -1,23 +1,11 @@
-from dash import dcc, html
-from fastapi import FastAPI, Query
-from fastapi.responses import HTMLResponse
-from glob import glob
-from httpx import ConnectTimeout
 from pathlib import Path
-from starlette.middleware.wsgi import WSGIMiddleware
-from tenacity import retry, retry_if_exception_type, stop_after_attempt
 from tqdm.auto import tqdm
-from typing import Optional
-import dash
-import dash_bootstrap_components as dbc
-import json
 import openml
 import os
 import pandas as pd
-import plotly.express as px
-import sqlite3
 from utils import OpenMLTaskHandler, SQLHandler
 import argparse
+from report_generator import run_report_script_for_dataset
 
 
 class AutoMLRunner:
@@ -28,37 +16,56 @@ class AutoMLRunner:
         run_mode="docker",
         num_tasks_to_return=1,
         save_every_n_tasks=1,
-        db_path="data/runs.db",
+        db_path="../data/runs.db",
+        regenerate_reports_only=False,
     ):
+        # set paths
+        self.GENERATED_DATA_REPORT_DIR = Path("../data/generated_data_reports")
+        os.makedirs(self.GENERATED_DATA_REPORT_DIR, exist_ok=True)
+
+        self.GENERATED_REPORTS_DIR = Path("../data/generated_reports")
+        self.GENERATED_REPORTS_DIR.mkdir(exist_ok=True)
+        self.result_path = Path("./data/results/*")
+        self.template_dir = Path("./website_assets/templates/")
+
         self.testing_mode = testing_mode
-        self.cache_file_name = "data/dataset_list.csv"
+        self.cache_file_name = "../data/dataset_list.csv"
         self.global_results_store = {}
         self.num_tasks_to_return = num_tasks_to_return
         self.use_cache = use_cache
         self.save_every_n_tasks = save_every_n_tasks
         self.benchmarks_to_use = [
             "autosklearn",
-            "autoweka",
-            "decisiontree",
-            "flaml",
+            # "autoweka",
+            # "decisiontree",
+            # "flaml",
             "gama",
             "h2oautoml",
-            "hyperoptsklearn",
-            "lightautoml",
-            "oboe",
-            "randomforest",
-            "tpot",
-            "autogluon",
+            # "hyperoptsklearn",
+            # "lightautoml",
+            # "oboe",
+            # "randomforest",
+            # "tpot",
+            # "autogluon",
         ]
         self.run_mode = run_mode
         self.db_path = db_path  # SQLite database path
         self._initialize()
         self.task_handler = OpenMLTaskHandler()
         self.sql_handler = SQLHandler(self.db_path)
+        self.regenerate_reports_only = regenerate_reports_only
+        self.disable_report_generation = False
 
     def _initialize(self):
         # Ensure required folders exist
-        self._make_files(["data", "data/results"])
+        self._make_files(
+            [
+                "../data",
+                "../data/results",
+                "../data/generated_reports",
+                "../data/generated_data_reports",
+            ]
+        )
         # Validate the run mode
         self._check_run_mode()
         # Load datasets, cache if needed
@@ -129,7 +136,7 @@ class AutoMLRunner:
                 dataset_id, task_id, benchmark_type
             ):
                 # cd to the automlbenchmark directory
-                os.chdir("automlbenchmark")
+                os.chdir("../automlbenchmark")
                 command = [
                     "yes",
                     "|",
@@ -149,7 +156,7 @@ class AutoMLRunner:
                 print(f"Running command: {' '.join(command)}")
                 os.popen(" ".join(command)).read()
 
-                os.chdir("..")
+                os.chdir("../src")
                 # Save the run to the database after successful execution
                 self.sql_handler.save_run(dataset_id, task_id, benchmark_type)
             else:
@@ -165,15 +172,24 @@ class AutoMLRunner:
             desc="Processing datasets",
         ):
             dataset_id = row["did"]
-            # Get tasks for the dataset or create a task if not available
-            task_ids = self.get_or_create_task_from_dataset(dataset_id)
-            # if it was either not possible to get tasks or create a task, skip the dataset
-            if task_ids:
-                for task_id in tqdm(
-                    task_ids, desc=f"Running tasks on dataset {dataset_id}"
-                ):
-                    # Run benchmarks on the task
-                    self.run_all_benchmarks_on_task(task_id, dataset_id)
+            if not self.regenerate_reports_only:
+                # Get tasks for the dataset or create a task if not available
+                task_ids = self.get_or_create_task_from_dataset(dataset_id)
+                # if it was either not possible to get tasks or create a task, skip the dataset
+                if task_ids:
+                    for task_id in tqdm(
+                        task_ids, desc=f"Running tasks on dataset {dataset_id}"
+                    ):
+                        # Run benchmarks on the task
+                        self.run_all_benchmarks_on_task(task_id, dataset_id)
+            if not self.disable_report_generation:
+                run_report_script_for_dataset(
+                    self.GENERATED_DATA_REPORT_DIR,
+                    self.GENERATED_REPORTS_DIR,
+                    dataset_id=dataset_id,
+                    result_path=self.result_path,
+                    template_dir=self.template_dir,
+                )
 
     def __call__(self):
         self.run_benchmark_on_all_datasets()
@@ -185,6 +201,8 @@ ags.add_argument("--use_cache", type=bool, default=True)
 ags.add_argument("--run_mode", type=str, default="docker")
 ags.add_argument("--num_tasks_to_return", type=int, default=1)
 ags.add_argument("--save_every_n_tasks", type=int, default=1)
+ags.add_argument("--regenerate_reports_only", type=bool, default=False)
+ags.add_argument("--disable_report_generation", type=bool, default=False)
 args = ags.parse_args()
 
 tf = AutoMLRunner(
@@ -193,5 +211,7 @@ tf = AutoMLRunner(
     run_mode=args.run_mode,
     num_tasks_to_return=args.num_tasks_to_return,
     save_every_n_tasks=args.save_every_n_tasks,
+    regenerate_reports_only=args.regenerate_reports_only,
+    disable_report_generation=args.disable_report_generation,
 )
 tf()
