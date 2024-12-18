@@ -18,6 +18,7 @@ class AutoMLRunner:
         save_every_n_tasks=1,
         db_path="../data/runs.db",
         regenerate_reports_only=False,
+        disable_report_generation=False,
     ):
         # set paths
         self.GENERATED_DATA_REPORT_DIR = Path("../data/generated_data_reports")
@@ -54,7 +55,7 @@ class AutoMLRunner:
         self.task_handler = OpenMLTaskHandler()
         self.sql_handler = SQLHandler(self.db_path)
         self.regenerate_reports_only = regenerate_reports_only
-        self.disable_report_generation = False
+        self.disable_report_generation = disable_report_generation
 
     def _initialize(self):
         # Ensure required folders exist
@@ -73,7 +74,9 @@ class AutoMLRunner:
         # Limit datasets if testing
         if self.testing_mode:
             # self.datasets = self.datasets.sample(frac=1)
-            self.datasets = self.datasets.head(5)
+            # self.datasets = self.datasets.head(5)
+            # get 2 datasets after the first 5
+            self.datasets = self.datasets.iloc[3:5]
 
     def _check_run_mode(self):
         valid_modes = ["local", "aws", "docker", "singularity"]

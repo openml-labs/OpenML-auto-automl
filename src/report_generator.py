@@ -38,7 +38,7 @@ import re
 import seaborn as sns
 import sqlite3
 from typing import Any
-from src.utils import OpenMLTaskHandler
+from utils import OpenMLTaskHandler
 
 matplotlib.use("agg")
 set_visualize_provider(InlineProvider())

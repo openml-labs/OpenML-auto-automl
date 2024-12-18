@@ -1,7 +1,7 @@
+git submodule init
 cd automlbenchmark
-git stash
 git pull origin master
 git submodule update
 cd ..
-cp config/frameworks.yaml automlbenchmark/resources/frameworks.yaml
-cp config/constraints.yaml automlbenchmark/resources/constraints.yaml
+cp src/config/frameworks.yaml automlbenchmark/resources/frameworks.yaml
+cp src/config/constraints.yaml automlbenchmark/resources/constraints.yaml
