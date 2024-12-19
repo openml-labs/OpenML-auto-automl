@@ -11,29 +11,54 @@
 <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"></script>
 
 <!-- DataTables CSS and JS -->
-<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+<link
+  rel="stylesheet"
+  href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css"
+/>
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 
 <body>
-  <div class="container">
-    {{ dataset_info }}
-    <div class="container" style="margin-top: 20px; text-align: left">
-      <h1>Table of Contents</h1>
+  <div class="container" style="margin-top: 20px; text-align: left" id="toc">
+    <h1 style="text-align: left">OpenML Dataset Report</h1>
+    <h1>Table of Contents</h1>
+    <ul>
+      <li><a href="#dataset-info">Dataset Information</a></li>
       <ul>
-        <li><a href="#best-result">Best Result</a></li>
-        <li><a href="#feature-importance">Feature Importance and Missing Value Count</a></li>
-        <li><a href="#dashboard-section">Best Models</a></li>
         <li>
-          <a href="#explanation-and-whats-next">Explanation and What's next?</a>
+          <a href="#dataTable">Data Summary Table</a> <!-- from DataOverviewGenerator -->
+
+          <a href="#feature-importance">Data Summary Table</a> <!-- from FeatureImportance -->
         </li>
-        <li><a href="#framework-table">Performance by AutoML Framework</a></li>
-        <li><a href="all-framework-results">All model results tabulated</a></li>
       </ul>
-    </div>
-    <div id="best-result">{{ best_result_table }}</div>
+      <li>
+        <a href="#dashboard-section">Best Models</a>
+        <ul>
+          <li>
+            <a href="#framework-table">Performance by AutoML Framework</a>
+          </li>
+          <li>
+            <a href="#all-framework-results">All model results tabulated</a>
+          </li>
+          <li>
+            <a href="#explanation-and-whats-next"
+              >Explanation and What's next?</a
+            >
+          </li>
+        </ul>
+      </li>
+    </ul>
+  </div>
+  <div class="container" id="data-report">
+    <div id="dataset-info">{{ dataset_info }}</div>
     <div id="feature-importance">{{ feature_importance }}</div>
+  </div>
+  <div class="container" id="automl-report">
+    <div id="best-result">{{ best_result_table }}</div>
     <div id="dashboard-section">{{ dashboard_section }}</div>
-    <div id="explanation-and-whats-next">
+    <div
+      id="explanation-and-whats-next"
+      style="text-align: left; margin-bottom: 20px"
+    >
       <h1>Explanation and What's next?</h1>
       <p>
         !!! This is an AI-generated (llama3.2) explanation of the results.
