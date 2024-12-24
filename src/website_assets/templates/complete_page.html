@@ -1,22 +1,27 @@
-<!-- Latest compiled and minified CSS -->
-<link
-  rel="stylesheet"
-  href="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css"
-/>
+<head>
+  <!-- jQuery library -->
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
 
-<!-- jQuery library -->
-<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+  <!-- Latest compiled JavaScript -->
+  <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"></script>
 
-<!-- Latest compiled JavaScript -->
-<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"></script>
+  <!-- Custom CSS : latex -->
+  <!-- <link rel="stylesheet" href="style.css" type="text/css" /> -->
+  <link rel="stylesheet" href="https://unpkg.com/latex.css/style.min.css" />
 
-<!-- DataTables CSS and JS -->
-<link
-  rel="stylesheet"
-  href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css"
-/>
-<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
-
+  <!-- DataTables CSS and JS -->
+  <link
+    rel="stylesheet"
+    href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css"
+  />
+  <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+</head>
+<style>
+  .body .container .div {
+    width: 70%;
+    margin: auto;
+  }
+</style>
 <body>
   <div class="container" style="margin-top: 20px; text-align: left" id="toc">
     <h1 style="text-align: left">OpenML Dataset Report</h1>
@@ -25,19 +30,20 @@
       <li><a href="#dataset-info">Dataset Information</a></li>
       <ul>
         <li>
-          <a href="#dataTable">Data Summary Table</a> <!-- from DataOverviewGenerator -->
-
-          <a href="#feature-importance">Data Summary Table</a> <!-- from FeatureImportance -->
+          <a href="#dataTable">Data Summary Table</a>
+          <!-- from DataOverviewGenerator -->
+        </li>
+        <li>
+          <a href="#feature-importance">Feature Importance</a>
+          <!-- from FeatureImportance -->
         </li>
       </ul>
       <li>
-        <a href="#dashboard-section">Best Models</a>
+        <a href="#best-result">AutoML Models Information</a>
         <ul>
+          <li><a href="#dashboard-section">Best Models</a></li>
           <li>
             <a href="#framework-table">Performance by AutoML Framework</a>
-          </li>
-          <li>
-            <a href="#all-framework-results">All model results tabulated</a>
           </li>
           <li>
             <a href="#explanation-and-whats-next"
@@ -50,23 +56,16 @@
   </div>
   <div class="container" id="data-report">
     <div id="dataset-info">{{ dataset_info }}</div>
-    <div id="feature-importance">{{ feature_importance }}</div>
+    <h1>Extra Dataset Information</h1>
+    <div>{{ data_summary_table }}</div>
+    <h2>Feature Importance</h2>
+    <div>{{ ebm_report }}</div>
   </div>
   <div class="container" id="automl-report">
     <div id="best-result">{{ best_result_table }}</div>
     <div id="dashboard-section">{{ dashboard_section }}</div>
-    <div
-      id="explanation-and-whats-next"
-      style="text-align: left; margin-bottom: 20px"
-    >
-      <h1>Explanation and What's next?</h1>
-      <p>
-        !!! This is an AI-generated (llama3.2) explanation of the results.
-        Please take the response with a grain of salt and use your own
-        judgement.
-      </p>
-      {{ explanation }}
-    </div>
+    <div id="explanation-and-whats-next">{{ explanation }}</div>
+    <h1 style="text-align: left; margin-bottom: 20px">All Model Results</h1>
     <div id="framework-table">{{ framework_table }}</div>
   </div>
 </body>

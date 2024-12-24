@@ -11,22 +11,19 @@ from report_generator import run_report_script_for_dataset
 class AutoMLRunner:
     def __init__(
         self,
-        testing_mode=True,
+        testing_mode=False,
         use_cache=True,
         run_mode="docker",
         num_tasks_to_return=1,
         save_every_n_tasks=1,
         db_path="../data/runs.db",
+        sbatch_script_dir="../data/sbatch_scripts",
         regenerate_reports_only=False,
-        disable_report_generation=False,
     ):
         # set paths
-        self.GENERATED_DATA_REPORT_DIR = Path("../data/generated_data_reports")
-        os.makedirs(self.GENERATED_DATA_REPORT_DIR, exist_ok=True)
-
         self.GENERATED_REPORTS_DIR = Path("../data/generated_reports")
         self.GENERATED_REPORTS_DIR.mkdir(exist_ok=True)
-        self.result_path = Path("./data/results/*")
+        self.result_path = Path("../data/results/*")
         self.template_dir = Path("./website_assets/templates/")
 
         self.testing_mode = testing_mode
@@ -51,11 +48,11 @@ class AutoMLRunner:
         ]
         self.run_mode = run_mode
         self.db_path = db_path  # SQLite database path
+        self.sbatch_script_dir = sbatch_script_dir
         self._initialize()
         self.task_handler = OpenMLTaskHandler()
         self.sql_handler = SQLHandler(self.db_path)
         self.regenerate_reports_only = regenerate_reports_only
-        self.disable_report_generation = disable_report_generation
 
     def _initialize(self):
         # Ensure required folders exist
@@ -63,8 +60,8 @@ class AutoMLRunner:
             [
                 "../data",
                 "../data/results",
-                "../data/generated_reports",
-                "../data/generated_data_reports",
+                self.GENERATED_REPORTS_DIR,
+                self.sbatch_script_dir,
             ]
         )
         # Validate the run mode
@@ -175,6 +172,7 @@ class AutoMLRunner:
             desc="Processing datasets",
         ):
             dataset_id = row["did"]
+            print(f"Processing dataset {dataset_id}")
             if not self.regenerate_reports_only:
                 # Get tasks for the dataset or create a task if not available
                 task_ids = self.get_or_create_task_from_dataset(dataset_id)
@@ -185,27 +183,44 @@ class AutoMLRunner:
                     ):
                         # Run benchmarks on the task
                         self.run_all_benchmarks_on_task(task_id, dataset_id)
-            if not self.disable_report_generation:
+
+            if self.regenerate_reports_only:
+                print(f"Regenerating reports for dataset {dataset_id}")
                 run_report_script_for_dataset(
-                    self.GENERATED_DATA_REPORT_DIR,
                     self.GENERATED_REPORTS_DIR,
                     dataset_id=dataset_id,
                     result_path=self.result_path,
                     template_dir=self.template_dir,
                 )
+    
+    def generate_sbatch_scripts(self):
+        self.script_dir = "/scratch-shared/<>/amlb/automlbenchmark/"
+        sbatch_template = f"""#!/bin/bash
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --partition=genoa
+#SBATCH --mem=56G
+#SBATCH --time=0-01:30:00
 
-    def __call__(self):
-        self.run_benchmark_on_all_datasets()
+module load 2022
+module spider Anaconda3/2022.05
+source /sw/arch/RHEL8/EB_production/2022/software/Anaconda3/2022.05/etc/profile.d/conda.sh
+conda activate <>
+{self.script_dir}
+python runbenchmark.py <>
+source deactivate"""
+        raise NotImplementedError("This method is not implemented yet.")
 
 
 ags = argparse.ArgumentParser()
-ags.add_argument("--testing_mode", type=bool, default=True)
+ags.add_argument("--testing_mode", type=bool, default=False)
 ags.add_argument("--use_cache", type=bool, default=True)
 ags.add_argument("--run_mode", type=str, default="docker")
 ags.add_argument("--num_tasks_to_return", type=int, default=1)
 ags.add_argument("--save_every_n_tasks", type=int, default=1)
 ags.add_argument("--regenerate_reports_only", type=bool, default=False)
-ags.add_argument("--disable_report_generation", type=bool, default=False)
+ags.add_argument("--generate_sbatch_only", type=bool, default=False)
 args = ags.parse_args()
 
 tf = AutoMLRunner(
@@ -215,6 +230,9 @@ tf = AutoMLRunner(
     num_tasks_to_return=args.num_tasks_to_return,
     save_every_n_tasks=args.save_every_n_tasks,
     regenerate_reports_only=args.regenerate_reports_only,
-    disable_report_generation=args.disable_report_generation,
+    sbatch_script_dir="../data/sbatch_scripts",
 )
-tf()
+if not args.generate_sbatch_only:
+    tf.run_benchmark_on_all_datasets()
+else:
+    tf.generate_sbatch_scripts()

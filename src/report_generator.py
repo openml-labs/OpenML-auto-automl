@@ -1,11 +1,4 @@
-"""
-This file is responsible for generating the report. 
-Note that it requires the multi_run_benchmark.py to have been run first to generate the results.
-The modules in this file are used in main.py
-"""
-
-from dash import dcc, html
-from flask import Flask, render_template, jsonify, request, send_file
+# Report Generator
 from glob import glob
 from interpret import set_visualize_provider
 from interpret.glassbox import ExplainableBoostingClassifier
@@ -19,294 +12,21 @@ from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 from tqdm.auto import tqdm
 from typing import Optional, Union
-import base64
-import dash
-import dash_bootstrap_components as dbc
-import io
 import json
 import markdown
 import matplotlib
-import matplotlib.pyplot as plt
-import numpy as np
 import openml
-import os
 import pandas as pd
-import plotly
 import plotly.express as px
-import plotly.graph_objs as go
-import re
-import seaborn as sns
-import sqlite3
 from typing import Any
-from utils import OpenMLTaskHandler
+from dataclasses import dataclass
+from utils import OpenMLTaskHandler, safe_load_file
+from metric_info import MetricsFromAMLB
 
 matplotlib.use("agg")
 set_visualize_provider(InlineProvider())
 
-
-def safe_load_file(file_path, file_type) -> Union[pd.DataFrame, dict, None]:
-    """
-    This function is responsible for safely loading a file. It returns None if the file is not found or if there is an error loading the file.
-    """
-    if file_type == "json":
-        try:
-            with open(str(Path(file_path)), "r") as f:
-                return json.load(f)
-        except:
-            return None
-    elif file_type == "pd":
-        try:
-            return pd.read_csv(str(file_path))
-        except:
-            return None
-    elif file_type == "textdict":
-        try:
-            with open(file_path, "r") as f:
-                return json.loads(f.read())
-        except:
-            return None
-    else:
-        raise NotImplementedError
-
-
-class DataReportGenerator:
-    def __init__(self, generated_ebm_report_dir):
-        self.generated_ebm_report_dir = generated_ebm_report_dir
-
-    def run_ebm_on_dataset(self, dataset_id, X_train, y_train):
-        try:
-            ebm = ExplainableBoostingClassifier(random_state=42)
-            ebm.fit(X_train, y_train)
-            ebm_global = ebm.explain_global().data()
-            names, scores = ebm_global["names"], ebm_global["scores"]
-            return self.generate_ebm_report(names, scores)
-        except Exception as e:
-            return "<div>Unable to generate feature importance report</div>"
-
-    def generate_ebm_report(self, names, scores):
-        df = pd.DataFrame({"Feature": names, "Score": scores})
-        # sort the features by score
-        df = df.sort_values(by="Score", ascending=False)
-        return to_html_datatable(df, index=False, table_id="feature-importance")
-
-    def get_data_and_split(self, dataset_id):
-        dataset = openml.datasets.get_dataset(dataset_id=dataset_id)
-        X, y, _, _ = dataset.get_data(target=dataset.default_target_attribute)
-        X = pd.get_dummies(X, prefix_sep=".").astype(float)
-        y, y_categories = y.factorize()
-        X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42)
-        return X, y, X_train, y_train
-
-    def get_feature_distribution(self, X):
-        try:
-            # return to_html_datatable(X.describe().T)
-            return f'<div id="feature-distribution">{to_html_datatable(X.describe().T)}</div>'
-        except Exception as e:
-            return "<div>Unable to generate feature distribution</div>"
-
-    def get_missing_value_count(self, X):
-        try:
-            count = pd.DataFrame(X.isnull().sum(), columns=["Missing Value Count"])
-            count.sort_values(by="Missing Value Count", ascending=False, inplace=True)
-            return to_html_datatable(count, index=True)
-        except Exception as e:
-            return "<div>Unable to generate missing value count</div>"
-
-    def generate_data_summary_table(self, X):
-        cols = X.columns[:100]  # Limit to the first 100 columns
-        col_visualization = {}
-
-        for col in cols:
-            try:
-                X[col] = X[col].astype(str)
-                number_of_unique_values = len(X[col].unique())
-
-                # Handle small unique value counts with histograms
-                if number_of_unique_values < 10:
-                    fig = px.histogram(X, x=col)
-                    fig.update_layout(
-                        title=None,
-                        xaxis_title=col,
-                        yaxis_title=None,
-                        width=300,
-                        height=300,
-                    )
-                else:
-                    # Show the first 2 most frequent values and the rest as "other"
-                    value_counts = X[col].value_counts()
-                    value_counts = value_counts.sort_values(ascending=False)
-                    if len(value_counts) > 2:
-                        value_counts = pd.concat(
-                            [
-                                value_counts[:2],
-                                pd.Series([value_counts[2:].sum()], index=["Other"]),
-                            ]
-                        )
-
-                    fig = px.pie(
-                        names=value_counts.index,
-                        values=value_counts.values,
-                    )
-                    fig.update_layout(
-                        title=None,
-                        xaxis_title=col,
-                        yaxis_title=None,
-                        width=300,
-                        height=300,
-                    )
-                # Convert figure to HTML
-                encoded_image = fig.to_html(full_html=False, include_plotlyjs="cdn")
-                col_visualization[col] = encoded_image
-
-            except Exception as e:
-                # Log the error and use a placeholder for failed visualizations
-                col_visualization[col] = ""
-                print(f"Error processing column '{col}': {str(e)}")
-
-        try:
-            # Create a DataFrame row for visualizations
-            visualization_row = pd.DataFrame([col_visualization])
-
-            # Insert the visualization row at the second position
-            X_with_visualizations = pd.concat(
-                [X.head(0), visualization_row, X.head(10).iloc[0:]], ignore_index=True
-            )
-
-            if X_with_visualizations is not None:
-                # Generate the table rows and columns
-                table_headers = "".join(
-                    ["<th>{}</th>".format(col) for col in X_with_visualizations.columns]
-                )
-                table_rows = "".join(
-                    [
-                        "<tr>"
-                        + "".join(["<td>{}</td>".format(cell) for cell in row])
-                        + "</tr>"
-                        for row in X_with_visualizations.values
-                    ]
-                )
-
-                # Add JavaScript for pagination
-                html = (
-                    f"""
-                <body>
-                    <div class="container" style="overflow-x:auto;">
-                        <h2>Data Preview</h2>
-                        <table id="dataTable" class="table table-striped table-bordered" style="display:none;">
-                            <thead>
-                                <tr>{table_headers}</tr>
-                            </thead>
-                            <tbody>
-                                {table_rows}
-                            </tbody>
-                        </table>
-                        <button id="prevBtn">Previous</button>
-                        <button id="nextBtn">Next</button>
-                    </div>
-                    """
-                    + """
-                    <script>
-                        const table = document.getElementById('dataTable');
-                        const cols = table.querySelectorAll('thead th');
-                        const rows = table.querySelectorAll('tbody tr');
-                        const totalCols = cols.length;
-                        const colsPerPage = 10;
-                        let startCol = 0;
-
-                        function updateTable() {
-                            // Hide all columns
-                            cols.forEach((col, index) => {
-                                col.style.display = 'none';
-                            });
-                            rows.forEach(row => {
-                                Array.from(row.children).forEach((cell, index) => {
-                                    cell.style.display = 'none';
-                                });
-                            });
-
-                            // Show only the columns for the current page
-                            for (let i = startCol; i < Math.min(startCol + colsPerPage, totalCols); i++) {
-                                cols[i].style.display = '';
-                                rows.forEach(row => {
-                                    row.children[i].style.display = '';
-                                });
-                            }
-
-                            // Show/hide pagination buttons
-                            document.getElementById('prevBtn').disabled = startCol === 0;
-                            document.getElementById('nextBtn').disabled = startCol + colsPerPage >= totalCols;
-                        }
-
-                        document.getElementById('prevBtn').addEventListener('click', () => {
-                            if (startCol > 0) {
-                                startCol -= colsPerPage;
-                                updateTable();
-                            }
-                        });
-
-                        document.getElementById('nextBtn').addEventListener('click', () => {
-                            if (startCol + colsPerPage < totalCols) {
-                                startCol += colsPerPage;
-                                updateTable();
-                            }
-                        });
-
-                        // Initialize the table
-                        table.style.display = '';
-                        updateTable();
-                    </script>
-                </body>
-                """
-                )
-                return html
-
-        except Exception as e:
-            return "<div>Unable to generate data summary table</div>"
-
-    def generate_data_report_for_dataset(self, dataset_id):
-        report_path = f"{self.generated_ebm_report_dir}/{dataset_id}_report.html"
-        if os.path.exists(report_path):
-            pass
-        else:
-            try:
-                X, y, X_train, y_train = self.get_data_and_split(dataset_id)
-
-                ebm_report = self.run_ebm_on_dataset(dataset_id, X_train, y_train)
-                missing_value_count = self.get_missing_value_count(X)
-
-                # combine the feature distribution and class imbalance reports if they are pd.DataFrame
-                # if isinstance(missing_value_count, pd.DataFrame) and isinstance(ebm_report, pd.DataFrame):
-                #     # ebm_report = pd.concat([missing_value_count, ebm_report], axis=1)
-                #     # merge
-                #     ebm_report = pd.merge(ebm_report, missing_value_count, left_index=True, right_index=True)
-                #     ebm_report = to_html_datatable(ebm_report, index=True,table_id="feature-importance-missing-value")
-                # feature_distribution = self.get_feature_distribution(X)
-                # class_imbalance_report = self.class_imbalance(y)
-                data_summary_table = self.generate_data_summary_table(X)
-
-                report_html = f"""
-                        <h1>Extra Dataset Information</h1>
-                        <div>
-                            {data_summary_table}
-                        </div>
-                        <h2>Additional Details</h2>
-                        <h2>Feature Importance</h2>
-                        <div>
-                            {ebm_report}
-                        </div>
-                        <h2>Missing Value Count</h2>
-                        <div>
-                            {missing_value_count}
-                        </div>
-                    """
-
-                report_path = (
-                    f"{self.generated_ebm_report_dir}/{dataset_id}_report.html"
-                )
-                with open(report_path, "w") as f:
-                    f.write(report_html)
-            except Exception as e:
-                print(f"Error processing dataset {dataset_id}: {e}")
+## Result collector
 
 
 class ResultCollector:
@@ -380,7 +100,6 @@ class ResultCollector:
                 results_file["dataset_description"] = results_file["dataset_id"].apply(
                     self.get_dataset_description_from_id
                 )
-                results_file["dataset_description"] = None
 
                 # Append the processed DataFrame to our list
                 all_results_list.append(results_file)
@@ -407,79 +126,218 @@ class ResultCollector:
     def __call__(self):
         self.collect_all_run_info_to_df()
         return self.all_results
-        # self.validate_dataframe_and_add_extra_info()
 
 
-class GenerateCompleteReportForDataset:
-    def __init__(
-        self,
-        dataset_id: int,
-        collector_results,
-        GENERATED_REPORTS_DIR: str = "../data/generated_reports",
-        GENERATED_DATA_REPORT_DIR: str = "../data/generated_data_reports",
-        template_dir="./website_assets/templates/",
-    ):
-        self.dataset_id = dataset_id
-        self.collector_results = collector_results
-        self.current_results = self.get_results_for_dataset_id(self.dataset_id)
-        self.jinja_environment = Environment(loader=FileSystemLoader(template_dir))
-        self.generated_final_reports_dir = GENERATED_REPORTS_DIR
-        self.generated_data_reports_dir = GENERATED_DATA_REPORT_DIR
-        self.template_to_use = {
-            "dataset_info": "data_information.html",
-            "best_result": "best_result_table.html",
-            "framework_table": "framework_table.html",
-            "metric_vs_result": "metric_vs_result.html",
-        }
-        binary_metrics = [
-            "auc",
-            "logloss",
-            "acc",
-            "balacc",
-        ]  # available metrics: auc (AUC), acc (Accuracy), balacc (Balanced Accuracy), pr_auc (Precision Recall AUC), logloss (Log Loss), f1, f2, f05 (F-beta scores with beta=1, 2, or 0.5), max_pce, mean_pce (Max/Mean Per-Class Error).
-        multiclass_metrics = [
-            "logloss",
-            "acc",
-            "balacc",
-        ]  # available metrics: same as for binary, except auc, replaced by auc_ovo (AUC One-vs-One), auc_ovr (AUC One-vs-Rest). AUC metrics and F-beta metrics are computed with weighted average.
-        regression_metrics = [
-            "rmse",
-            "r2",
-            "mae",
-        ]  # available metrics: mae (Mean Absolute Error), mse (Mean Squared Error), msle (Mean Squared Logarithmic Error), rmse (Root Mean Square Error), rmsle (Root Mean Square Logarithmic Error), r2 (R^2).
-        timeseries_metrics = [
-            "mase",
-            "mape",
-            "smape",
-            "wape",
-            "rmse",
-            "mse",
-            "mql",
-            "wql",
-            "sql",
-        ]  # available metrics: mase (Mean Absolute Scaled Error), mape (Mean Absolute Percentage Error),
-        self.all_metrics = (
-            binary_metrics
-            + multiclass_metrics
-            + regression_metrics
-            + timeseries_metrics
+## Dashboard
+### Data summary table
+class FeatureImportance:
+    """
+    Feature Importance using Explainable Boosting Classifier from InterpretML
+    """
+
+    def generate_ebm_report(self, names, scores):
+        df = pd.DataFrame({"Feature": names, "Score": scores}).sort_values(
+            by="Score", ascending=False
         )
+        fig = px.bar(df, x="Score", y="Feature", orientation="h")
+        fig.update_layout(
+            title="Feature Importance",
+            xaxis_title="Score",
+            yaxis_title="Feature",
+            width=800,
+            height=800,
+        )
+        fig_html = fig.to_html(full_html=False, include_plotlyjs="cdn")
+        return f"""<div id="feature-importance" class="container" style="margin-top: 20px; text-align: left">{fig_html}</div>"""
 
-        # run the function to get the best result
-        self.framework_names = ["Auto-sklearn", "H20AutoML", "AutoGluon", "All results"]
-        self.process_fns = [
-            self.process_auto_sklearn_data(self.current_results),
-            self.get_rows_for_framework_from_df(
-                df=self.current_results, framework_name="H20AutoML", top_n=10
-            ),
-            self.get_rows_for_framework_from_df(
-                df=self.current_results, framework_name="AutoGluon", top_n=10
-            ),
-            self.get_rows_for_framework_from_df(
-                df=self.current_results, framework_name="All results"
-            ),
-        ]
+    def run_ebm_on_dataset(self, dataset_id, X_train, y_train):
+        try:
+            ebm = ExplainableBoostingClassifier(random_state=42)
+            ebm.fit(X_train, y_train)
+            ebm_global = ebm.explain_global().data()
+            names, scores = ebm_global["names"], ebm_global["scores"]
+            return self.generate_ebm_report(names, scores)
+        except Exception as e:
+            print(f"Error running EBM on dataset {dataset_id}: {e}")
+            return "<div>Unable to generate feature importance report</div>"
 
+
+class DataOverviewGenerator:
+    """
+    This class does the following
+    - Generates a data summary table for the dataset
+    - Generates the Feature Importance report using Explainable Boosting Classifier
+    """
+
+    def __init__(self, template_dir="./website_assets/templates/"):
+        self.template_dir = template_dir
+        self.jinja_environment = Environment(loader=FileSystemLoader(template_dir))
+        self.template_to_use = {"data_summary_table": "data_summary_table.html"}
+        self.explainable_boosting = FeatureImportance()
+
+    def get_data_and_split(self, dataset_id):
+        dataset = openml.datasets.get_dataset(dataset_id=dataset_id)
+        X, y, _, _ = dataset.get_data(target=dataset.default_target_attribute)
+        X = pd.get_dummies(X, prefix_sep=".").astype(float)
+        y, _ = y.factorize()
+        return train_test_split(X, y, random_state=42)
+
+    def generate_data_summary_table(self, X, max_cols=100):
+        col_visualizations = {}
+        # Get the first 100 columns if max_cols is not specified. This is to avoid generating too many visualizations.
+        if max_cols is not None:
+            cols = X.columns[:max_cols]
+
+        # Generate visualizations for each column. Pie or histogram based on the number of unique values.
+        self.generate_visualizations_for_each_column(X, col_visualizations, cols)
+
+        try:
+            visualization_row = pd.DataFrame([col_visualizations])
+            missing_values = X.isnull().sum().to_frame().T
+            missing_values.index = ["Missing Values"]
+            X_preview = X.head(10)
+
+            table_data = pd.concat(
+                [visualization_row, missing_values, X_preview], ignore_index=True
+            )
+            row_names = ["Visualization", "Missing Values"]
+            # Assign the 'Headers' column directly
+            table_data["Headers"] = row_names + [""] * (
+                len(table_data) - len(row_names)
+            )
+
+            # Rearrange columns to move 'Headers' to the front
+            table_data = table_data[
+                ["Headers"] + [col for col in table_data.columns if col != "Headers"]
+            ]
+
+            headers_html = "".join(f"<th>{col}</th>" for col in table_data.columns)
+            rows_html = "".join(
+                "<tr>" + "".join(f"<td>{cell}</td>" for cell in row) + "</tr>"
+                for row in table_data.values
+            )
+
+            return (
+                f"""
+        <div class="container" style="overflow-x:auto;">
+            <h2>Data Summary Table</h2>
+            <input type="text" id="searchBar" placeholder="Search columns..." style="margin-bottom:10px; width:100%;">
+            <table id="dataTable" class="table table-striped table-bordered" style="display:none;">
+                <thead><tr>{headers_html}</tr></thead>
+                <tbody>{rows_html}</tbody>
+            </table>
+            <button id="prevBtn">Previous</button>
+            <button id="nextBtn">Next</button>
+        </div>"""
+                + """
+        <script>
+            const table = document.getElementById('dataTable');
+            const searchBar = document.getElementById('searchBar');
+            const cols = table.querySelectorAll('thead th');
+            const rows = table.querySelectorAll('tbody tr');
+            const totalCols = cols.length;
+            const colsPerPage = 10;
+            let startCol = 0;
+
+            function updateTable() {
+                cols.forEach((col, i) => col.style.display = i >= startCol && i < startCol + colsPerPage ? '' : 'none');
+                rows.forEach(row => {
+                    Array.from(row.children).forEach((cell, i) => cell.style.display = i >= startCol && i < startCol + colsPerPage ? '' : 'none');
+                });
+                document.getElementById('prevBtn').disabled = startCol === 0;
+                document.getElementById('nextBtn').disabled = startCol + colsPerPage >= totalCols;
+            }
+
+            searchBar.addEventListener('input', () => {
+                const query = searchBar.value.toLowerCase();
+                cols.forEach((col, i) => {
+                    if (col.textContent.toLowerCase().includes(query)) {
+                        col.style.display = '';
+                        rows.forEach(row => {
+                            row.children[i].style.display = '';
+                        });
+                    } else {
+                        col.style.display = 'none';
+                        rows.forEach(row => {
+                            row.children[i].style.display = 'none';
+                        });
+                    }
+                });
+            });
+
+            document.getElementById('prevBtn').addEventListener('click', () => {
+                if (startCol > 0) startCol -= colsPerPage;
+                updateTable();
+            });
+
+            document.getElementById('nextBtn').addEventListener('click', () => {
+                if (startCol + colsPerPage < totalCols) startCol += colsPerPage;
+                updateTable();
+            });
+
+            table.style.display = '';
+            updateTable();
+        </script>
+        """
+            )
+        except Exception as e:
+            print(f"Error generating data summary table: {e}")
+            return "<div>Unable to generate data summary table</div>"
+
+    def generate_visualizations_for_each_column(self, X, col_visualizations, cols):
+        for col in cols:
+            try:
+                X[col] = X[col].astype(str)
+                unique_values = len(X[col].unique())
+
+                if unique_values < 10:
+                    fig = px.histogram(X, x=col)
+                else:
+                    value_counts = X[col].value_counts()
+                    if len(value_counts) > 2:
+                        value_counts = pd.concat(
+                            [
+                                value_counts[:2],
+                                pd.Series([value_counts[2:].sum()], index=["Other"]),
+                            ]
+                        )
+                    fig = px.pie(names=value_counts.index, values=value_counts.values)
+
+                fig.update_layout(
+                    title=None,
+                    width=300,
+                    height=300,
+                )
+                col_visualizations[col] = fig.to_html(
+                    full_html=False, include_plotlyjs="cdn"
+                )
+            except Exception as e:
+                print(f"Error processing column '{col}': {e}")
+                col_visualizations[col] = ""
+
+    def generate_complete_report(self, dataset_id):
+        try:
+            X_train, _, y_train, _ = self.get_data_and_split(dataset_id)
+            ebm_report = self.explainable_boosting.run_ebm_on_dataset(
+                dataset_id, X_train, y_train
+            )
+            data_summary_table = self.generate_data_summary_table(X_train)
+            return data_summary_table, ebm_report
+        except Exception as e:
+            print(f"Error generating report for dataset {dataset_id}: {e}")
+            return None, None
+
+### Best result table
+class BestResult:
+    """This generates the Best result table for the dashboard"""
+
+    def __init__(
+        self, current_results, metrics_info, jinja_environment, template_to_use
+    ):
+        self.current_results = current_results
+        self.metrics_info = metrics_info
+        self.jinja_environment = jinja_environment
+        self.template_to_use = template_to_use
         self.best_framework = ""
         self.best_metric = ""
         self.type_of_task = ""
@@ -490,34 +348,25 @@ class GenerateCompleteReportForDataset:
         self.description = ""
         self.metric_and_result = ""
 
-        self.get_best_result()
-
-    def get_results_for_dataset_id(self, dataset_id: int) -> Optional[pd.DataFrame]:
-        """
-        This function returns the results for a given dataset_id. If no results are found, it returns None.
-        """
-        results_for_dataset = self.collector_results[
-            self.collector_results["dataset_id"] == dataset_id
-        ]
-        if results_for_dataset.empty:
-            return None
-        return results_for_dataset
-
     def get_best_result(self):
         """
-        This function returns the best result from the current_results DataFrame. It first sorts the DataFrame based on the metric used and then returns the best result.
+        This function returns the best result from the current_results DataFrame.
+        It first sorts the DataFrame based on the metric used and then returns the best result.
         """
         if self.current_results is None:
             return None
+
         metric_used = self.current_results["metric"].iloc[0]
-        if metric_used in ["auc", "acc", "balacc"]:
-            # Since higher value is better we sort in descending order
-            sort_in_ascending_order = False
-        elif metric_used in ["logloss", "neg_logloss"]:
-            # Since lower value is better we sort in ascending order
-            sort_in_ascending_order = True
-        else:
-            sort_in_ascending_order = False
+        sort_in_ascending_order = True  # Default to ascending order
+
+        # Determine sorting order based on metrics_info
+        for category, metrics in self.metrics_info.items():
+            if metric_used in metrics:
+                sort_in_ascending_order = (
+                    metrics[metric_used]["better_value"] == "lower"
+                )
+                self.metric_description = metrics[metric_used]["description"]
+                break
 
         sorted_results = self.current_results.sort_values(
             by="result", ascending=sort_in_ascending_order
@@ -533,21 +382,24 @@ class GenerateCompleteReportForDataset:
         self.best_result_for_metric = best_result.get("result", "")
         self.description = best_result.get("dataset_description", "")
 
-        # all metric columns that are in the dataframe and in the list of all metrics
+        # all metric columns that are in the dataframe and in the metrics_info
         metric_columns = [
-            col for col in self.current_results.columns if col in self.all_metrics
+            col
+            for col in self.current_results.columns
+            if any(col in metrics for metrics in self.metrics_info.values())
         ]
-        all_metrics_present = []
+
+        self.all_metrics_present = []
         for metric in metric_columns:
             try:
-                all_metrics_present.append(self.current_results[metric].values[0])
+                self.all_metrics_present.append(self.current_results[metric].values[0])
             except:
                 pass
 
         self.metric_and_result = " ".join(
             [
                 f"The {metric} is {result} "
-                for metric, result in zip(metric_columns, all_metrics_present)
+                for metric, result in zip(metric_columns, self.all_metrics_present)
             ]
         )
 
@@ -558,14 +410,132 @@ class GenerateCompleteReportForDataset:
         template = self.jinja_environment.get_template(
             self.template_to_use["best_result"]
         )
-        return template.render(
-            best_framework=self.best_framework,
-            best_metric=self.best_metric,
-            type_of_task=self.type_of_task,
-            dataset_id=self.dataset_id,
-            task_id=self.task_id,
-            task_name=self.task_name,
+        try:
+            return template.render(
+                best_framework=self.best_framework,
+                best_metric=self.best_metric,
+                type_of_task=self.type_of_task,
+                dataset_id=self.dataset_id,
+                task_id=self.task_id,
+                task_name=self.task_name,
+                best_metric_explanation = self.metric_description,
+            )
+        except Exception as e:
+            print(f"Error generating best result table: {e}")
+            return "<div>Unable to generate best result table</div>"
+
+
+### LLM Explanation
+class LLMExplanation:
+    def __init__(self, best_result: BestResult, model="llama3.2", temperature=0.3):
+        self.model = model
+        self.temperature = temperature
+        self.best_result = best_result
+
+    def get_explanation_from_llm(self):
+        """
+        Based on information obtained from the AutoML systems and OpenML generate an explanation using LLM.
+        """
+
+        prompt_format = f"""For a dataset called {self.best_result.task_name} , the best framework is {self.best_result.best_framework} with a {self.best_result.best_metric} of {self.best_result.best_result_for_metric}. This is a {self.best_result.type_of_task} task. The results are as follows {self.best_result.metric_and_result}. For each metric, tell me if this is a good score (and why), and if it is not, how can I improve it? Keep your answer to the point.
+        The dataset description is: {self.best_result.description}
+        """
+        response: ChatResponse = chat(
+            model=self.model,
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt_format,
+                },
+            ],
+            options={
+                "temperature": self.temperature,
+            },
         )
+        response = response["message"]["content"]
+        response = markdown.markdown(response)
+
+        return f"""<div
+            style="text-align: left; margin-bottom: 20px"
+            >
+            <h1>Explanation and What's next?</h1>
+            <p>
+                !!! This is an AI-generated (llama3.2) explanation of the results.
+                Please take the response with a grain of salt and use your own
+                judgement.
+            </p>
+            {response}
+            </div>"""
+
+
+## Generate complete report for ds
+
+
+@dataclass
+class FrameworkProcessor:
+    # def __init__(self, framework_name, process_fn):
+    framework_name: str
+    process_fn: Any
+
+
+class GenerateCompleteReportForDataset:
+    def __init__(
+        self,
+        dataset_id: int,
+        collector_results,
+        GENERATED_REPORTS_DIR: str = "../data/generated_reports",
+        template_dir="./website_assets/templates/",
+    ):
+        self.dataset_id = int(dataset_id)
+        self.collector_results = collector_results
+        self.current_results = self.get_results_for_dataset_id(self.dataset_id)
+        self.jinja_environment = Environment(loader=FileSystemLoader(template_dir))
+        self.generated_final_reports_dir = GENERATED_REPORTS_DIR
+        self.template_dir = template_dir
+        self.template_to_use = {
+            "dataset_info": "data_information.html",
+            "best_result": "best_result_table.html",
+            "framework_table": "framework_table.html",
+            "metric_vs_result": "metric_vs_result.html",
+        }
+        self.framework_processor = FrameworkProcessor
+        # all metrics that are in the dataframe
+        self.metrics_info = MetricsFromAMLB().metrics_info
+
+        # run the function to get the best result
+        self.frameworks_that_support_extra_information = [
+            "Auto-sklearn",
+            "H20AutoML",
+            "AutoGluon",
+            "All results",
+        ]
+
+        self.framework_processors = [
+            FrameworkProcessor("Auto-sklearn", self.process_auto_sklearn_data),
+            FrameworkProcessor("H20AutoML", self.process_h2oautoml_data),
+            FrameworkProcessor("AutoGluon", self.process_auto_gluon_data),
+            FrameworkProcessor("All results", self.process_all_results_data),
+        ]
+
+        self.best_result = BestResult(
+            self.current_results,
+            self.metrics_info,
+            self.jinja_environment,
+            self.template_to_use,
+        )
+        # for all init in best result, add them to the current object
+        self.best_result.get_best_result()
+
+    def get_results_for_dataset_id(self, dataset_id: int) -> Optional[pd.DataFrame]:
+        """
+        This function returns the results for a given dataset_id. If no results are found, it returns None.
+        """
+        results_for_dataset = self.collector_results[
+            self.collector_results["dataset_id"] == dataset_id
+        ]
+        if results_for_dataset.empty:
+            return None
+        return results_for_dataset
 
     def generate_dataset_info(self):
         """
@@ -576,8 +546,32 @@ class GenerateCompleteReportForDataset:
         )
         return template.render(
             dataset_id=self.dataset_id,
-            task_name=self.task_name,
+            task_name=self.best_result.task_name,
         )
+
+    def process_h2oautoml_data(self, current_results, top_n=10):
+        # TODO
+        return self.get_rows_for_framework_from_df(
+            df=current_results, framework_name="H20AutoML", top_n=10
+        )
+
+    def process_auto_gluon_data(self, current_results, top_n=10):
+        # TODO
+        return self.get_rows_for_framework_from_df(
+            df=current_results, framework_name="AutoGluon", top_n=10
+        )
+
+    def process_all_results_data(self, df, top_n=40):
+        try:
+            df = df.drop(columns="dataset_description", errors="ignore")
+            return to_html_datatable(
+                df,
+                caption="Results by AutoML Framework",
+                table_id="all-framework-results",
+            )
+        except Exception as e:
+            print(e)
+            return ""
 
     def process_auto_sklearn_data(self, df, top_n=10):
         auto_sklearn_data = pd.DataFrame()
@@ -590,12 +584,6 @@ class GenerateCompleteReportForDataset:
                     with open(models_path, "r") as f:
                         models_file = json.load(f)
                         for model in models_file:
-                            model_type = (
-                                "sklearn_classifier"
-                                if "sklearn_classifier" in models_file[model]
-                                else "sklearn_regressor"
-                            )
-
                             auto_sklearn_data = pd.concat(
                                 [auto_sklearn_data, pd.DataFrame([models_file[model]])],
                                 ignore_index=True,
@@ -612,50 +600,33 @@ class GenerateCompleteReportForDataset:
             print(e)
             return "<div></div>"
 
-        # return auto_sklearn_data.to_html()
-
     def get_rows_for_framework_from_df(
         self, df: pd.DataFrame, framework_name, top_n=40
     ):
         try:
-            if framework_name == "All results":
-                # drop the description column if it exists
-                try:
-                    df.drop("dataset_description", axis=1)
-                except:
-                    pass
-                return to_html_datatable(
-                    df,
-                    caption="Results by AutoML Framework",
-                    table_id="all-framework-results",
-                )
-            framework_rows: pd.DataFrame = df[df["framework"] == framework_name][
-                "models"
-            ].values[0]
+            framework_rows = df[df["framework"] == framework_name]["models"].values[0]
             framework_data = safe_load_file(framework_rows, "pd")
-            if top_n is not None:
-                framework_data = framework_data.head(40)
-
-            return to_html_datatable(framework_data, caption=f"{framework_name} Models")
-        except:
+            return to_html_datatable(
+                framework_data.head(top_n), caption=f"{framework_name} Models"
+            )
+        except Exception as e:
+            print(e)
             return ""
 
     def generate_framework_table(self):
-        """
-        This function generates the framework table using the framework_name information.
-        """
         complete_html = ""
-        for framework_name, process_fn in zip(self.framework_names, self.process_fns):
+        for processor in self.framework_processors:
             try:
-                complete_html += process_fn
-            except:
-                pass
+                complete_html += processor.process_fn(self.current_results)
+            except Exception as e:
+                print(e)
+                continue
 
-        return f"""<div class="container" style="margin-top: 20px; text-align: left;">
-                <h2>{framework_name}</h2>
-                    {complete_html}
-                </div>
-                """
+        return f"""
+        <div class="container" style="margin-top: 20px; text-align: left;">
+            {complete_html}
+        </div>
+        """
 
     def generate_dashboard_section(self):
         dashboard_html = f"""
@@ -666,11 +637,11 @@ class GenerateCompleteReportForDataset:
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px; margin-bottom: 40px;">
             {self.graph_and_heading(
                 self.current_results,
-                self.best_metric.upper() + "-task",
+                self.best_result.best_metric.upper() + "-task",
                 "task",
                 "result",
                 "framework",
-                f"{self.best_metric.upper()} of each Framework",
+                f"{self.best_result.best_metric.upper()} of each Framework",
                 "1",
                 "This is a plot of the main metric used in the experiment against the result of the experiment for each framework for each task. Use this plot to compare the performance of each framework for each task.",
                 "bar"
@@ -757,53 +728,34 @@ class GenerateCompleteReportForDataset:
             )
             encoded_image = fig.to_html(full_html=False, include_plotlyjs="cdn")
 
-            return f"<div style='grid-column: {grid_column};'>{encoded_image}</div>"
+            return f"<div style='margin-top: 20px; text-align: left grid-column: {grid_column};'>{encoded_image}</div>"
         except Exception as e:
             print(e)
-            return f"<div style='grid-column: {grid_column};'><p>Error generating graph: {str(e)}</p></div>"
-
-    def get_explanation_from_llm(self):
-        prompt_format = f"""For a dataset called {self.task_name} , the best framework is {self.best_framework} with a {self.best_metric} of {self.best_result_for_metric}. This is a {self.type_of_task} task. The results are as follows {self.metric_and_result}. For each metric, tell me if this is a good score (and why), and if it is not, how can I improve it? Keep your answer to the point.
-        The dataset description is: {self.description}
-    """
-        response: ChatResponse = chat(
-            model="llama3.2",
-            messages=[
-                {
-                    "role": "user",
-                    "content": prompt_format,
-                },
-            ],
-            options={
-                "temperature": 0.3,
-            },
-        )
-        response = response["message"]["content"]
-        markdown_response = markdown.markdown(response)
-        return f'<div id="explanation-and-whats-next style="text-align: left; margin-bottom: 20px;">{markdown_response}</div>'
-
-    def get_data_report(self):
-        try:
-            with open(
-                f"{self.generated_data_reports_dir}/{self.dataset_id}_report.html", "r"
-            ) as f:
-                return f.read()
-        except FileNotFoundError:
-            return "<div><p>Feature importance not available for this dataset</p></div>"
-
-    def generate_download_current_page_button(self):
-        return f"""
-        <a href="report_{self.dataset_id}.html" download="report_{self.dataset_id}.html" class="btn btn-primary">Download Report</a>
-        """
+            return f"<div style='margin-top: 20px; text-align: left grid-column: {grid_column};'><p>Error generating graph: {str(e)}</p></div>"
 
     def __call__(self):
+        report_path = (
+            Path(self.generated_final_reports_dir) / f"report_{self.dataset_id}.html"
+        )
+        if report_path.exists():
+            return
+        data_overview = DataOverviewGenerator(
+            self.template_dir
+        )
+        data_summary_table, ebm_report = data_overview.generate_complete_report(
+            self.dataset_id
+        )
+        if data_summary_table is None or ebm_report is None:
+            return
+
         dataset_info = self.generate_dataset_info()
-        best_result_table = self.generate_best_result_table()
+        best_result_table = self.best_result.generate_best_result_table()
         framework_table = self.generate_framework_table()
         dashboard_section = self.generate_dashboard_section()
-        explanation = self.get_explanation_from_llm()
-        feature_importance = self.get_data_report()
-        # download_button = self.generate_download_current_page_button()
+        explanation = LLMExplanation(
+            best_result=self.best_result
+        ).get_explanation_from_llm()
+
         combined_html = self.jinja_environment.get_template(
             "complete_page.html"
         ).render(
@@ -812,36 +764,34 @@ class GenerateCompleteReportForDataset:
             framework_table=framework_table,
             dashboard_section=dashboard_section,
             explanation=explanation,
-            feature_importance=feature_importance,
+            ebm_report=ebm_report,
+            data_summary_table=data_summary_table,
         )
-        with open(
-            Path(self.generated_final_reports_dir) / f"report_{self.dataset_id}.html",
-            "w",
-        ) as f:
+
+        with open(report_path, "w") as f:
             f.write(combined_html)
 
 
+## run report
+
+
 def run_report_script_for_dataset(
-    GENERATED_DATA_REPORT_DIR,
-    GENERATED_REPORTS_DIR,
-    dataset_id,
-    result_path,
-    template_dir,
+    GENERATED_REPORTS_DIR, dataset_id, result_path, template_dir
 ):
     # collect all the results from the runs
     collector = ResultCollector(result_path)
     all_results = collector()
-    drg = DataReportGenerator(GENERATED_DATA_REPORT_DIR)
+    # drg = DataOverviewGenerator(template_dir)
     try:
         # generate the data report for all datasets
-        drg.generate_data_report_for_dataset(dataset_id=dataset_id)
+        # drg.generate_complete_report(dataset_id=dataset_id)
         # write complete report to a file
-        GenerateCompleteReportForDataset(
+        report_gen = GenerateCompleteReportForDataset(
             dataset_id=dataset_id,
             collector_results=all_results,
-            GENERATED_DATA_REPORT_DIR=GENERATED_DATA_REPORT_DIR,
             GENERATED_REPORTS_DIR=GENERATED_REPORTS_DIR,
             template_dir=template_dir,
-        )()
+        )
+        report_gen()
     except Exception as e:
         print(f"Error generating report for dataset {dataset_id}: {str(e)}")

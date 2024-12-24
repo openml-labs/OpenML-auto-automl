@@ -68,20 +68,21 @@ class OpenMLTaskHandler:
             string = str(string).strip()
             return int(string.split("/")[-1])
         except Exception as e:
+            print(f"Error getting OpenML task id from string: {e}")
             return None
 
     def get_dataset_id_from_task_id(self, string):
         task_id = self.get_openml_task_id_from_string(string=string)
         if task_id is not None:
             try:
-                return openml.tasks.get_task(
+                task= openml.tasks.get_task(
                     task_id=task_id,
                     download_data=False,
                     download_qualities=False,
-                    # download_splits=False,
-                    # download_features_meta_data=False,
-                ).dataset_id
+                )
+                return task.get_dataset().dataset_id
             except:
+                print(f"Error getting dataset id from task id: {task_id}")
                 return None
         else:
             return None
@@ -167,7 +168,6 @@ def render_plot(dataset_results):
     plt.close()
 
     return f"data:image/png;base64,{encoded_image}"
-
 
 def safe_load_file(file_path, file_type) -> Union[pd.DataFrame, dict, None]:
     """
