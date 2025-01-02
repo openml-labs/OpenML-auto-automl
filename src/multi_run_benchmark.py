@@ -214,7 +214,16 @@ conda activate automl
 pip install --user -r {self.script_dir}requirements.txt
 python multi_run_benchmark.py --testing_mode False --use_cache True --run_mode singularity --num_tasks_to_return 1 --save_every_n_tasks 1 --generate_reports False --generate_sbatch_only True
 source deactivate"""
-        raise NotImplementedError("This method is not implemented yet.")
+        # raise NotImplementedError("This method is not implemented yet.")
+        for _, row in tqdm(
+            self.datasets.iterrows(),
+            total=self.datasets.shape[0],
+            desc="Processing datasets",
+        ):
+            dataset_id = row["did"]
+            print(f"Processing dataset {dataset_id}")
+            with open(f"{self.sbatch_script_dir}/run_{dataset_id}.sh", "w") as f:
+                f.write(sbatch_template)
 
 
 ags = argparse.ArgumentParser()
