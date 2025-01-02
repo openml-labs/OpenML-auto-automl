@@ -6,6 +6,7 @@ import pandas as pd
 from utils import OpenMLTaskHandler, SQLHandler
 import argparse
 from report_generator import run_report_script_for_dataset
+from typing import Union
 
 
 class AutoMLRunner:
@@ -19,10 +20,11 @@ class AutoMLRunner:
         db_path="../data/runs.db",
         sbatch_script_dir="../data/sbatch_scripts",
         generate_reports=False,
+        single_dataset_id: Union[None, int] = False,
     ):
         # set paths
         self.GENERATED_REPORTS_DIR = Path("../data/generated_reports")
-        self.GENERATED_REPORTS_DIR.mkdir(exist_ok=True)
+        # self.GENERATED_REPORTS_DIR.mkdir(exist_ok=True)
         self.result_path = Path("../data/results/*")
         self.template_dir = Path("./website_assets/templates/")
 
@@ -53,6 +55,7 @@ class AutoMLRunner:
         self.task_handler = OpenMLTaskHandler()
         self.sql_handler = SQLHandler(self.db_path)
         self.generate_reports = generate_reports
+        self.single_dataset_id = single_dataset_id
 
     def _initialize(self):
         # Ensure required folders exist
@@ -69,7 +72,7 @@ class AutoMLRunner:
         # Load datasets, cache if needed
         self.datasets = self._load_datasets()
         # Limit datasets if testing
-        if self.testing_mode:
+        if self.testing_mode == True:
             # self.datasets = self.datasets.sample(frac=1)
             # self.datasets = self.datasets.head(5)
             # get 2 datasets after the first 5
@@ -94,8 +97,8 @@ class AutoMLRunner:
             )
 
         # Save the updated dataset list to the cache
-        if self.use_cache:
-            datasets.to_csv(self.cache_file_name, index=False)
+        # if self.use_cache == True:
+        datasets.to_csv(self.cache_file_name, index=False)
 
         return datasets
 
@@ -147,7 +150,7 @@ class AutoMLRunner:
                     "--mode",
                     self.run_mode,
                 ]
-                if self.testing_mode:
+                if self.testing_mode == True:
                     command.insert(
                         -2, "test"
                     )  # Insert test mode before the last parameter
@@ -166,6 +169,7 @@ class AutoMLRunner:
 
     def run_benchmark_on_all_datasets(self):
         """Run benchmarks on all datasets."""
+        print(self.datasets.shape)
         for _, row in tqdm(
             self.datasets.iterrows(),
             total=self.datasets.shape[0],
@@ -184,19 +188,33 @@ class AutoMLRunner:
                         # Run benchmarks on the task
                         self.run_all_benchmarks_on_task(task_id, dataset_id)
 
-            if self.generate_reports:
-                print(f"Regenerating reports for dataset {dataset_id}")
-                run_report_script_for_dataset(
-                    self.GENERATED_REPORTS_DIR,
-                    dataset_id=dataset_id,
-                    result_path=self.result_path,
-                    template_dir=self.template_dir,
-                )
-    
+    def run_benchmark_on_single_dataset(self, dataset_id):
+        print(f"Processing dataset {dataset_id}")
+        if not self.generate_reports:
+            # Get tasks for the dataset or create a task if not available
+            task_ids = self.get_or_create_task_from_dataset(dataset_id)
+            # if it was either not possible to get tasks or create a task, skip the dataset
+            if task_ids:
+                for task_id in tqdm(
+                    task_ids, desc=f"Running tasks on dataset {dataset_id}"
+                ):
+                    # Run benchmarks on the task
+                    self.run_all_benchmarks_on_task(task_id, dataset_id)
+
+
     def generate_sbatch_scripts(self):
-        self.main_dir = "/home/smukherjee/OpenML-auto-automl/"
+        self.main_dir = "/home/smukherjee/OpenML-auto-automl"
         self.script_dir = "/home/smukherjee/scripts"
-        sbatch_template = f"""#!/bin/bash
+
+        print(self.datasets.shape)
+        for _, row in tqdm(
+            self.datasets.iterrows(),
+            total=self.datasets.shape[0],
+            desc="Processing datasets",
+        ):
+            dataset_id = row["did"]
+            print(f"Processing dataset {dataset_id}")
+            sbatch_template = f"""#!/bin/bash
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
@@ -207,34 +225,29 @@ class AutoMLRunner:
 module load 2022
 module spider Anaconda3/2022.05
 source /sw/arch/RHEL8/EB_production/2022/software/Anaconda3/2022.05/etc/profile.d/conda.sh
-cd {self.script_dir}
-conda create -n automl python=3.9
+cd {self.main_dir}
+conda create -n automl python=3.9.19
 conda activate automl
-{self.script_dir}
-pip install --user -r {self.script_dir}requirements.txt
-python multi_run_benchmark.py --testing_mode False --use_cache True --run_mode singularity --num_tasks_to_return 1 --save_every_n_tasks 1 --generate_reports False --generate_sbatch_only True
+pip install --user -r {self.main_dir}/requirements.txt
+cd {self.main_dir}/src/
+python multi_run_benchmark.py --testing_mode False --use_cache True --run_mode singularity --num_tasks_to_return 1 --save_every_n_tasks 1 --generate_reports False --generate_sbatch_only True --single_dataset_id {dataset_id}
 source deactivate"""
-        # raise NotImplementedError("This method is not implemented yet.")
-        for _, row in tqdm(
-            self.datasets.iterrows(),
-            total=self.datasets.shape[0],
-            desc="Processing datasets",
-        ):
-            dataset_id = row["did"]
-            print(f"Processing dataset {dataset_id}")
             with open(f"{self.sbatch_script_dir}/run_{dataset_id}.sh", "w") as f:
                 f.write(sbatch_template)
 
 
 ags = argparse.ArgumentParser()
-ags.add_argument("--testing_mode", type=bool, default=False)
-ags.add_argument("--use_cache", type=bool, default=True)
-ags.add_argument("--run_mode", type=str, default="docker")
-ags.add_argument("--num_tasks_to_return", type=int, default=1)
-ags.add_argument("--save_every_n_tasks", type=int, default=1)
-ags.add_argument("--generate_reports", type=bool, default=False)
-ags.add_argument("--generate_sbatch_only", type=bool, default=False)
+ags.add_argument("--testing_mode", default=False)
+ags.add_argument("--use_cache", default=True)
+ags.add_argument("--run_mode", default="docker")
+ags.add_argument("--num_tasks_to_return", default=1)
+ags.add_argument("--save_every_n_tasks", default=1)
+ags.add_argument("--generate_reports", default=False)
+ags.add_argument("--generate_sbatch_only", default=False)
+ags.add_argument("--single_dataset_id", default=None)
 args = ags.parse_args()
+
+print(args.testing_mode)
 
 tf = AutoMLRunner(
     testing_mode=args.testing_mode,
@@ -242,10 +255,20 @@ tf = AutoMLRunner(
     run_mode=args.run_mode,
     num_tasks_to_return=args.num_tasks_to_return,
     save_every_n_tasks=args.save_every_n_tasks,
-    generate_reports=args.regenerate_reports_only,
+    generate_reports=args.generate_reports,
     sbatch_script_dir="../data/sbatch_scripts",
+    single_dataset_id=None,
 )
-if not args.generate_sbatch_only:
+if args.generate_sbatch_only == False and args.single_dataset_id is None:
     tf.run_benchmark_on_all_datasets()
-else:
+elif args.single_dataset_id is not None:
+    tf.run_benchmark_on_single_dataset(args.single_dataset_id)
+elif args.generate_sbatch_only == True:
     tf.generate_sbatch_scripts()
+elif args.single_dataset_id is not None and args.generate_reports == True:
+    run_report_script_for_dataset(
+        tf.GENERATED_REPORTS_DIR,
+        dataset_id=args.single_dataset_id,
+        result_path=tf.result_path,
+        template_dir=tf.template_dir,
+    )
