@@ -752,9 +752,9 @@ class GenerateCompleteReportForDataset:
         best_result_table = self.best_result.generate_best_result_table()
         framework_table = self.generate_framework_table()
         dashboard_section = self.generate_dashboard_section()
-        explanation = LLMExplanation(
-            best_result=self.best_result
-        ).get_explanation_from_llm()
+        # explanation = LLMExplanation(
+        #     best_result=self.best_result
+        # ).get_explanation_from_llm()
 
         combined_html = self.jinja_environment.get_template(
             "complete_page.html"
@@ -763,7 +763,7 @@ class GenerateCompleteReportForDataset:
             best_result_table=best_result_table,
             framework_table=framework_table,
             dashboard_section=dashboard_section,
-            explanation=explanation,
+            # explanation=explanation,
             ebm_report=ebm_report,
             data_summary_table=data_summary_table,
         )
