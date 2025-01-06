@@ -51,7 +51,7 @@ class AutoMLRunner:
             "autosklearn",
             # "autoweka",
             # "decisiontree",
-            # "flaml",
+            "flaml",
             "gama",
             "h2oautoml",
             # "hyperoptsklearn",
