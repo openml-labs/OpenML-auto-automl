@@ -1,3 +1,4 @@
 [submodule "automlbenchmark"]
 	path = automlbenchmark
-	url = https://github.com/openml/automlbenchmark.git
+	url = https://github.com/SubhadityaMukherjee/automlbenchmark.git
+	branch = singularity
