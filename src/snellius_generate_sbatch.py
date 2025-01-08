@@ -6,6 +6,7 @@ import pandas as pd
 from utils import OpenMLTaskHandler, SQLHandler
 import argparse
 from report_generator import run_report_script_for_dataset
+from multiprocessing import Pool, cpu_count
 from typing import Union
 
 
@@ -17,35 +18,42 @@ class AutoMLRunner:
         run_mode="singularity",
         num_tasks_to_return=1,
         save_every_n_tasks=1,
-        data_dir="data",
-        db_path="data/runs.db",
-        sbatch_script_dir="data/sbatch_scripts",
-        generated_reports_dir="data/generated_reports",
-        template_dir="website_assets/templates/",
-        cache_file_name="data/dataset_list.csv",
-        results_dir="data/results",
+        data_dir="automl_data",
+        db_path="runs.db",
+        sbatch_script_dir="sbatch_scripts",
+        generated_reports_dir="generated_reports",
+        template_dir="src/website_assets/templates/",
+        cache_file_name="dataset_list.csv",
+        results_dir="results",
+        username= "smukherjee",
+        automl_max_time= "00:30:00"
     ):
+        self.username = username
         # set all the required directories
-        self.main_dir_in_snellius = "/home/smukherjee/OpenML-auto-automl"
+        self.main_dir_in_snellius = f"/home/{self.username}/OpenML-auto-automl"
         self.automlb_dir_in_snellius = (
-            "/home/smukherjee/OpenML-auto-automl/automlbenchmark"
+            f"/home/{self.username}/OpenML-auto-automl/automlbenchmark"
         )
-        self.script_dir_in_snellius = "/home/smukherjee/scripts"
+        self.script_dir_in_snellius = f"/home/{self.username}/scripts"
+        self.data_dir = Path(f"/home/{self.username}")/data_dir
+        self.automl_max_time = automl_max_time
+
+        self.template_dir = Path(self.main_dir_in_snellius) / template_dir
+
+        self.db_path = Path(self.data_dir) / db_path
+        self.sbatch_script_dir = Path(self.data_dir) / sbatch_script_dir
+        self.generated_reports_dir = (
+            Path(self.data_dir) / generated_reports_dir
+        )
+        self.cache_file_name = Path(self.data_dir) / cache_file_name
+        self.results_dir = Path(self.data_dir) / results_dir
 
         self.testing_mode = testing_mode
         self.use_cache = use_cache
         self.run_mode = run_mode
         self.num_tasks_to_return = num_tasks_to_return
         self.save_every_n_tasks = save_every_n_tasks
-        self.db_path = Path(self.main_dir_in_snellius) / db_path
-        self.sbatch_script_dir = Path(self.main_dir_in_snellius) / sbatch_script_dir
-        self.generated_reports_dir = (
-            Path(self.main_dir_in_snellius) / generated_reports_dir
-        )
-        self.template_dir = Path(self.main_dir_in_snellius) / template_dir
-        self.cache_file_name = Path(self.main_dir_in_snellius) / cache_file_name
-        self.results_dir = Path(self.main_dir_in_snellius) / results_dir
-        self.data_dir = Path(self.main_dir_in_snellius) / data_dir
+
 
         self.benchmarks_to_use = [
             "autosklearn",
@@ -69,7 +77,7 @@ class AutoMLRunner:
         self.datasets = self._load_datasets()
         print(f"Loaded {len(self.datasets)} datasets")
 
-        self.sql_handler = SQLHandler(db_path)
+        self.sql_handler = SQLHandler(str(self.db_path))
         self.openml_task_handler = OpenMLTaskHandler()
 
     def _initialize(self):
@@ -77,7 +85,6 @@ class AutoMLRunner:
         self._make_dirs(
             [
                 self.data_dir,
-                self.db_path,
                 self.sbatch_script_dir,
                 self.generated_reports_dir,
                 self.template_dir,
@@ -139,7 +146,7 @@ class AutoMLRunner:
             # print(f"Error retrieving tasks for dataset {dataset_id}: {e}")
             # return None
             print(f"Trying to create a task for dataset {dataset_id}")
-            task_id = self.task_handler.try_create_task(dataset_id)
+            task_id = self.openml_task_handler.try_create_task(dataset_id)
             try:
                 int(task_id)
             except:
@@ -147,19 +154,14 @@ class AutoMLRunner:
             return [int(task_id)] if task_id else None
 
     def generate_sbatch_for_dataset(self, dataset_id):
-        print(f"Processing dataset {dataset_id}")
         # Get tasks for the dataset or create a task if not available
         task_ids = self.get_or_create_task_from_dataset(dataset_id)
 
         # If it was not possible to get tasks or create a task, skip the dataset
         if task_ids:
-            for task_id in tqdm(
-                task_ids, desc=f"Running tasks on dataset {dataset_id}"
-            ):
-                # Generate separate sbatch for each benchmark
-                for benchmark in tqdm(
-                    self.benchmarks_to_use, desc="Running benchmarks"
-                ):
+            for task_id in tqdm(task_ids):
+                # commands = []
+                for benchmark in self.benchmarks_to_use:
                     # Check if the task has already been run
                     if not self.sql_handler.task_already_run(
                         dataset_id=dataset_id, task_id=task_id, framework=benchmark
@@ -176,46 +178,54 @@ class AutoMLRunner:
                             self.run_mode,
                         ]
                         command.extend(["-o", f"{self.results_dir}"])
+                        # commands.append(" ".join(command))
                         command = " ".join(command)
+                
+                    if command:  # Only create the script if there are commands to run
+                    # combined_commands = "\n".join(commands)
 
                         # Create the sbatch script
                         sbatch_script = f"""#!/bin/bash
-    #SBATCH --nodes=1
-    #SBATCH --ntasks=1
-    #SBATCH --cpus-per-task=16
-    #SBATCH --partition=genoa
-    #SBATCH --mem=56G
-    #SBATCH --time=0-01:15:00
+        #SBATCH --nodes=1
+        #SBATCH --ntasks=1
+        #SBATCH --cpus-per-task=16
+        #SBATCH --partition=genoa
+        #SBATCH --mem=56G
+        #SBATCH --time=0-{self.automl_max_time}
 
-    module load 2022
-    module spider Anaconda3/2022.05
-    source /sw/arch/RHEL8/EB_production/2022/software/Anaconda3/2022.05/etc/profile.d/conda.sh
+        module load 2022
+        module spider Anaconda3/2022.05
+        source /sw/arch/RHEL8/EB_production/2022/software/Anaconda3/2022.05/etc/profile.d/conda.sh
 
-    cd {self.automlb_dir_in_snellius}
-    conda create -n automl python=3.9.19
-    conda activate automl
-    pip install --user -r {self.automlb_dir_in_snellius}/requirements.txt
+        yes | conda activate /home/{self.username}/.conda/envs/automl
 
-    {command}
+        cd {self.automlb_dir_in_snellius}
+        {command}
 
-    source deactivate
-    """
+        source deactivate
+        """
                         # Save the sbatch script to a file
                         script_path = (
-                            self.sbatch_script_dir
-                            / f"{dataset_id}_{task_id}_{benchmark}.sbatch"
+                            self.sbatch_script_dir / f"{dataset_id}_{task_id}_{benchmark}.sh"
                         )
                         with open(script_path, "w") as f:
                             f.write(sbatch_script)
 
+    def generate_sbatch_for_dataset_wrapper(self,args):
+        self, dataset_id = args
+        self.generate_sbatch_for_dataset(dataset_id)
+
     def generate_sbatch_for_all_datasets(self):
-        for _, row in tqdm(
-            self.datasets.iterrows(),
-            total=self.datasets.shape[0],
-            desc="Processing datasets",
-        ):
-            dataset_id = row["did"]
-            self.generate_sbatch_for_dataset(dataset_id)
+        dataset_ids = self.datasets["did"].tolist()
+        print("Generating sbatches")
+        # Use a multiprocessing pool for parallel processing
+        with Pool(processes=3) as pool:
+            # Use tqdm to show progress bar for parallel processing
+            list(tqdm(
+                pool.imap(self.generate_sbatch_for_dataset_wrapper, [(self, did) for did in dataset_ids]),
+                total=len(dataset_ids),
+                desc="Processing datasets",
+            ))
 
 
 ags = argparse.ArgumentParser()

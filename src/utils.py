@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Union
 import matplotlib.pyplot as plt
 
-
 class OpenMLTaskHandler:
 
     def get_target_col_type(self, dataset, target_col_name):
@@ -49,6 +48,7 @@ class OpenMLTaskHandler:
                     evaluation_measure=evaluation_measure,
                     estimation_procedure_id=1,
                 )
+                print(f"Publishing a task: {task}")
 
                 # if self.check_if_api_key_is_valid():
                 task.publish()
@@ -137,37 +137,6 @@ class SQLHandler:
         conn.commit()
         conn.close()
 
-
-def find_max_existing_dataset_id() -> int:
-    conn = sqlite3.connect("./data/runs.db")
-    c = conn.cursor()
-    c.execute("SELECT DISTINCT dataset_id FROM runs")
-    rows = c.fetchall()
-    conn.close()
-    return max([x[0] for x in rows]) if rows else 0
-
-
-def render_plot(dataset_results):
-    plt.figure(figsize=(10, 6))
-    sns.barplot(
-        data=dataset_results,
-        x="framework",
-        y="result",
-        hue="metric",
-        palette="muted",
-    )
-    plt.title("Results by Framework and Metric")
-    plt.tight_layout()
-
-    # Save plot to buffer
-    buffer = io.BytesIO()
-    plt.savefig(buffer, format="png")
-    buffer.seek(0)
-    encoded_image = base64.b64encode(buffer.read()).decode()
-    buffer.close()
-    plt.close()
-
-    return f"data:image/png;base64,{encoded_image}"
 
 def safe_load_file(file_path, file_type) -> Union[pd.DataFrame, dict, None]:
     """
