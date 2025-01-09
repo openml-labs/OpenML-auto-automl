@@ -25,26 +25,22 @@ class AutoMLRunner:
         template_dir="src/website_assets/templates/",
         cache_file_name="dataset_list.csv",
         results_dir="results",
-        username= "smukherjee",
-        automl_max_time= "00:30:00"
+        username="smukherjee",
+        automl_max_time="00:50:00",
     ):
         self.username = username
         # set all the required directories
         self.main_dir_in_snellius = f"/home/{self.username}/OpenML-auto-automl"
-        self.automlb_dir_in_snellius = (
-            f"/home/{self.username}/OpenML-auto-automl/automlbenchmark"
-        )
+        self.automlb_dir_in_snellius = f"/home/{self.username}/automlbenchmark"
         self.script_dir_in_snellius = f"/home/{self.username}/scripts"
-        self.data_dir = Path(f"/home/{self.username}")/data_dir
+        self.data_dir = Path(f"/home/{self.username}") / data_dir
         self.automl_max_time = automl_max_time
 
         self.template_dir = Path(self.main_dir_in_snellius) / template_dir
 
         self.db_path = Path(self.data_dir) / db_path
         self.sbatch_script_dir = Path(self.data_dir) / sbatch_script_dir
-        self.generated_reports_dir = (
-            Path(self.data_dir) / generated_reports_dir
-        )
+        self.generated_reports_dir = Path(self.data_dir) / generated_reports_dir
         self.cache_file_name = Path(self.data_dir) / cache_file_name
         self.results_dir = Path(self.data_dir) / results_dir
 
@@ -53,7 +49,6 @@ class AutoMLRunner:
         self.run_mode = run_mode
         self.num_tasks_to_return = num_tasks_to_return
         self.save_every_n_tasks = save_every_n_tasks
-
 
         self.benchmarks_to_use = [
             "autosklearn",
@@ -67,7 +62,7 @@ class AutoMLRunner:
             # "oboe",
             # "randomforest",
             # "tpot",
-            "autogluon",
+            # "autogluon",
         ]
 
         # initialize all the required directories and validate required parameters
@@ -162,10 +157,13 @@ class AutoMLRunner:
             for task_id in tqdm(task_ids):
                 # commands = []
                 for benchmark in self.benchmarks_to_use:
+                    script_path = (
+                        self.sbatch_script_dir
+                        / f"{dataset_id}_{task_id}_{benchmark}.sh"
+                    )
                     # Check if the task has already been run
-                    if not self.sql_handler.task_already_run(
-                        dataset_id=dataset_id, task_id=task_id, framework=benchmark
-                    ):
+                    if not os.path.exists(script_path):
+
                         # Prepare the command to execute the benchmark
                         command = [
                             "yes",
@@ -180,38 +178,36 @@ class AutoMLRunner:
                         command.extend(["-o", f"{self.results_dir}"])
                         # commands.append(" ".join(command))
                         command = " ".join(command)
-                
+
                     if command:  # Only create the script if there are commands to run
-                    # combined_commands = "\n".join(commands)
+                        # combined_commands = "\n".join(commands)
 
                         # Create the sbatch script
                         sbatch_script = f"""#!/bin/bash
-        #SBATCH --nodes=1
-        #SBATCH --ntasks=1
-        #SBATCH --cpus-per-task=16
-        #SBATCH --partition=genoa
-        #SBATCH --mem=56G
-        #SBATCH --time=0-{self.automl_max_time}
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --partition=genoa
+#SBATCH --mem=56G
+#SBATCH --time=0-{self.automl_max_time}
 
-        module load 2022
-        module spider Anaconda3/2022.05
-        source /sw/arch/RHEL8/EB_production/2022/software/Anaconda3/2022.05/etc/profile.d/conda.sh
+module load 2022
+module spider Anaconda3/2022.05
+source /sw/arch/RHEL8/EB_production/2022/software/Anaconda3/2022.05/etc/profile.d/conda.sh
 
-        yes | conda activate /home/{self.username}/.conda/envs/automl
+yes | conda activate /home/{self.username}/.conda/envs/automl
 
-        cd {self.automlb_dir_in_snellius}
-        {command}
+cd {self.automlb_dir_in_snellius}
+{command}
 
-        source deactivate
+source deactivate
         """
                         # Save the sbatch script to a file
-                        script_path = (
-                            self.sbatch_script_dir / f"{dataset_id}_{task_id}_{benchmark}.sh"
-                        )
+
                         with open(script_path, "w") as f:
                             f.write(sbatch_script)
 
-    def generate_sbatch_for_dataset_wrapper(self,args):
+    def generate_sbatch_for_dataset_wrapper(self, args):
         self, dataset_id = args
         self.generate_sbatch_for_dataset(dataset_id)
 
@@ -221,11 +217,16 @@ class AutoMLRunner:
         # Use a multiprocessing pool for parallel processing
         with Pool(processes=3) as pool:
             # Use tqdm to show progress bar for parallel processing
-            list(tqdm(
-                pool.imap(self.generate_sbatch_for_dataset_wrapper, [(self, did) for did in dataset_ids]),
-                total=len(dataset_ids),
-                desc="Processing datasets",
-            ))
+            list(
+                tqdm(
+                    pool.imap(
+                        self.generate_sbatch_for_dataset_wrapper,
+                        [(self, did) for did in dataset_ids],
+                    ),
+                    total=len(dataset_ids),
+                    desc="Processing datasets",
+                )
+            )
 
 
 ags = argparse.ArgumentParser()
@@ -233,13 +234,13 @@ ags.add_argument("--use_cache", default=True)
 ags.add_argument("--run_mode", default="singularity")
 ags.add_argument("--generate_reports", "-r", action="store_true")
 ags.add_argument("--generate_sbatch", "-s", action="store_true")
+ags.add_argument("--username", type=str, default="smukherjee")
 args = ags.parse_args()
 
 print("Arguments: ", args)
 
 runner = AutoMLRunner(
-    use_cache=args.use_cache,
-    run_mode=args.run_mode,
+    use_cache=args.use_cache, run_mode=args.run_mode, username=args.username
 )
 
 if args.generate_sbatch:

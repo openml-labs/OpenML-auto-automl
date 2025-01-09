@@ -1,0 +1,77 @@
+***************************************************************************************************** 
+* WARNING: The 2022 software stack is deprecated. Please consider switching to
+the latest 2024 * 
+* software stack, or the older 2023 software stack. * 
+* * 
+* If you have any question, please contact us via
+http://servicedesk.surfsara.nl. * 
+***************************************************************************************************** 
+
+----------------------------------------------------------------------------
+  Anaconda3: Anaconda3/2022.05
+----------------------------------------------------------------------------
+    Description:
+      Built to complement the rich, open source Python community, the
+      Anaconda platform provides an enterprise-ready data analytics
+      platform that empowers companies to adopt a modern open data science
+      analytics architecture. 
+
+
+    You will need to load all module(s) on any one of the lines below before the "Anaconda3/2022.05" module is available to load.
+
+      2022
+ 
+    Help:
+      
+      Description
+      ===========
+      Built to complement the rich, open source Python community,
+      the Anaconda platform provides an enterprise-ready data analytics platform 
+      that empowers companies to adopt a modern open data science analytics architecture.
+      
+      
+      More information
+      ================
+       - Homepage: https://www.anaconda.com
+      
+
+
+ 
+
+Running benchmark `autosklearn` on `openml/t/3` framework in `singularity` mode.
+Loading frameworks definitions from ['/gpfs/home4/smukherjee/automlbenchmark/resources/frameworks.yaml'].
+Loading benchmark constraint definitions from ['/gpfs/home4/smukherjee/automlbenchmark/resources/constraints.yaml'].
+Loading openml task 3.
+Looking for the image /gpfs/home4/smukherjee/automlbenchmark/frameworks/autosklearn/.setup/autosklearn_stable-dev.sif
+
+-------------------------------------------------------------------------
+Starting job singularity.openml_t_3.test.all_tasks.all_folds.autosklearn.
+[MONITORING] [singularity.openml_t_3.test.all_tasks.all_folds.autosklearn] CPU Utilization: 71.1%
+[MONITORING] [singularity.openml_t_3.test.all_tasks.all_folds.autosklearn] Memory Usage: 12.4%
+[MONITORING] [singularity.openml_t_3.test.all_tasks.all_folds.autosklearn] Disk Usage: 2.1%
+Starting Singularity: singularity run --pwd /bench  -B /gpfs/home4/smukherjee:/input -B /gpfs/home4/smukherjee/automl_data/results/autosklearn.openml_t_3.test.singularity.20250109T155818:/output -B /gpfs/home4/smukherjee/.config/automlbenchmark:/custom /gpfs/home4/smukherjee/automlbenchmark/frameworks/autosklearn/.setup/autosklearn_stable-dev.sif "autosklearn openml/t/3 test   -Xseed=auto -i /input -o /output -u /custom -s skip -Xrun_mode=singularity --session=".
+Datasets are loaded by default from folder /gpfs/home4/smukherjee.
+Generated files will be available in folder /gpfs/home4/smukherjee/automl_data/results.
+Running cmd `singularity run --pwd /bench  -B /gpfs/home4/smukherjee:/input -B /gpfs/home4/smukherjee/automl_data/results/autosklearn.openml_t_3.test.singularity.20250109T155818:/output -B /gpfs/home4/smukherjee/.config/automlbenchmark:/custom /gpfs/home4/smukherjee/automlbenchmark/frameworks/autosklearn/.setup/autosklearn_stable-dev.sif "autosklearn openml/t/3 test   -Xseed=auto -i /input -o /output -u /custom -s skip -Xrun_mode=singularity --session="`
+declare: invalid option "-m"
+declare: invalid option "-m"
+Running benchmark `autosklearn` on `openml/t/3` framework in `local` mode.
+Loading frameworks definitions from ['/bench/resources/frameworks.yaml'].
+Loading benchmark constraint definitions from ['/bench/resources/constraints.yaml'].
+Loading openml task 3.
+Running 10 jobs
+
+----------------------------------------------------------
+Starting job local.openml_t_3.test.kr-vs-kp.0.autosklearn.
+Assigning 8 cores (total=192) for new task kr-vs-kp.
+[MONITORING] [python3.9 [202637]] CPU Utilization: 71.4%
+Assigning 336224 MB (total=386576 MB) for new kr-vs-kp task.
+[MONITORING] [python3.9 [202637]] Memory Usage: 12.5%
+[MONITORING] [python3.9 [202637]] Disk Usage: 0.0%
+Running task kr-vs-kp on framework autosklearn with config:
+TaskConfig({'framework': 'autosklearn', 'framework_params': {'_save_artifacts': ['models']}, 'framework_version': '0.15.0', 'type': 'classification', 'name': 'kr-vs-kp', 'openml_task_id': 3, 'test_server': False, 'fold': 0, 'metric': 'auc', 'metrics': ['auc', 'logloss', 'acc', 'balacc'], 'seed': 1165142327, 'job_timeout_seconds': 2400, 'max_runtime_seconds': 1200, 'cores': 8, 'max_mem_size_mb': 336224, 'min_vol_size_mb': -1, 'input_dir': '/input', 'output_dir': '/output/', 'output_predictions_file': '/output/predictions/kr-vs-kp/0/predictions.csv', 'tag': None, 'command': 'runbenchmark.py autosklearn openml/t/3 test -Xseed=auto -i /input -o /output -u /custom -s skip -Xrun_mode=singularity --session=', 'git_info': {'repo': 'https://github.com/SubhadityaMukherjee/automlbenchmark.git', 'branch': 'singularity', 'commit': '7980953509ddbe0c961203f526b6110f33d9cc4e', 'tags': [], 'status': ['## singularity...origin/singularity', ' M amlb/runners/singularity.py']}, 'measure_inference_time': False, 'ext': {}, 'quantile_levels': [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9], 'type_': 'binary', 'output_metadata_file': '/output/predictions/kr-vs-kp/0/metadata.json'})
+Running cmd `/bench/frameworks/autosklearn/venv/bin/python -W ignore /bench/frameworks/autosklearn/exec.py`
+INFO:__main__:
+**** Auto-sklearn [v0.15.0]****
+
+INFO:__main__:Running Auto-sklearn for kr-vs-kp with a maximum time of 1200s on 8 cores with 336224MB, optimizing roc_auc.
