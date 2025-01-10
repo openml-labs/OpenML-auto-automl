@@ -106,8 +106,13 @@ class AutoMLRunner:
         datasets: pd.DataFrame = openml.datasets.list_datasets(
             output_format="dataframe"
         )
+        print(self.use_cache)
 
-        if self.use_cache and os.path.exists(self.cache_file_name):
+        if self.use_cache ==False:
+            datasets.to_csv(self.cache_file_name, index=False)
+            return datasets
+
+        if self.use_cache==True and os.path.exists(self.cache_file_name):
             cached_datasets = pd.read_csv(self.cache_file_name)
 
             # append new datasets to the cache
@@ -118,9 +123,10 @@ class AutoMLRunner:
             # return new datasets
             return new_datasets
 
-        if self.use_cache and not os.path.exists(self.cache_file_name):
+        if self.use_cache ==True and not os.path.exists(self.cache_file_name):
             datasets.to_csv(self.cache_file_name, index=False)
             return datasets
+
 
     def get_or_create_task_from_dataset(self, dataset_id):
         """Retrieve tasks for a dataset with 10-fold Crossvalidation or try to create a task if not available."""
@@ -232,7 +238,7 @@ source deactivate
 
 
 ags = argparse.ArgumentParser()
-ags.add_argument("--use_cache", default=True)
+ags.add_argument("--use_cache", "-c", action = "store_true")
 ags.add_argument("--run_mode", default="singularity")
 ags.add_argument("--generate_reports", "-r", action="store_true")
 ags.add_argument("--generate_sbatch", "-s", action="store_true")
@@ -240,9 +246,13 @@ ags.add_argument("--username", type=str, default="smukherjee")
 args = ags.parse_args()
 
 print("Arguments: ", args)
+use_cache = False
+if args.use_cache:
+    use_cache = True
+
 
 runner = AutoMLRunner(
-    use_cache=args.use_cache, run_mode=args.run_mode, username=args.username
+    use_cache=use_cache, run_mode=args.run_mode, username=args.username
 )
 
 if args.generate_sbatch:
