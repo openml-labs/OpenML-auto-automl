@@ -5,7 +5,6 @@ import os
 import pandas as pd
 from utils import OpenMLTaskHandler, SQLHandler
 import argparse
-from report_generator import run_report_script_for_dataset
 from multiprocessing import Pool, cpu_count
 from typing import Union
 
@@ -154,7 +153,7 @@ class AutoMLRunner:
 
         # If it was not possible to get tasks or create a task, skip the dataset
         if task_ids:
-            for task_id in tqdm(task_ids):
+            for task_id in task_ids:
                 # commands = []
                 for benchmark in self.benchmarks_to_use:
                     script_path = (
@@ -200,13 +199,16 @@ yes | conda activate /home/{self.username}/.conda/envs/automl
 cd {self.automlb_dir_in_snellius}
 {command}
 
+# Generate reports
+python {self.script_dir_in_snellius}/report_generator.py -d {dataset_id} -r {self.results_dir} -t {self.template_dir} -g {self.generated_reports_dir}
+
 source deactivate
         """
                         # Save the sbatch script to a file
 
                         with open(script_path, "w") as f:
                             f.write(sbatch_script)
-
+                  
     def generate_sbatch_for_dataset_wrapper(self, args):
         self, dataset_id = args
         self.generate_sbatch_for_dataset(dataset_id)
@@ -215,7 +217,7 @@ source deactivate
         dataset_ids = self.datasets["did"].tolist()
         print("Generating sbatches")
         # Use a multiprocessing pool for parallel processing
-        with Pool(processes=3) as pool:
+        with Pool(processes=8) as pool:
             # Use tqdm to show progress bar for parallel processing
             list(
                 tqdm(
@@ -245,3 +247,4 @@ runner = AutoMLRunner(
 
 if args.generate_sbatch:
     runner.generate_sbatch_for_all_datasets()
+

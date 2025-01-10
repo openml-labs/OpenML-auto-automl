@@ -3,7 +3,7 @@ from tqdm.auto import tqdm
 import openml
 import os
 import pandas as pd
-from utils import SQLHandler
+from utils import SQLHandler, OpenMLTaskHandler
 import argparse
 from typing import Union
 import pandas as pd
@@ -14,6 +14,8 @@ class SBatchRunner:
         self,
         filter_by_id=Union[None, int],
         filter_by_framework=Union[None, str],
+        filter_by_suite=None,
+        test_subset: Union[None, int] = None,
         data_dir="automl_data",
         username="smukherjee",
         sbatch_script_dir: str = "sbatch_scripts",
@@ -21,11 +23,25 @@ class SBatchRunner:
         self.sbatch_script_dir = sbatch_script_dir
         self.filter_by_id = filter_by_id
         self.filter_by_framework = filter_by_framework
+        self.filter_by_suite = filter_by_suite
+        self.test_subset = test_subset
         self.username = username
         self.main_dir_in_snellius = f"/home/{self.username}/OpenML-auto-automl"
         self.data_dir = Path(f"/home/{self.username}") / data_dir
         self.sbatch_script_dir = Path(self.data_dir) / sbatch_script_dir
+
+        self._initialize()
         self.sql_handler = SQLHandler(db_path=Path(self.data_dir) / "runs.db")
+        self.benchmark_suite_ids = {"amlb_training": 293}
+        self.fn_to_get_dataset_id = OpenMLTaskHandler().get_dataset_id_from_task_id
+
+    def _make_files(self, folders):
+        """Ensure that the necessary directories exist."""
+        for folder in folders:
+            os.makedirs(folder, exist_ok=True)
+
+    def _initialize(self):
+        self._make_files([self.data_dir, self.sbatch_script_dir])
 
     def run_sbatch(self, sbatch_path: Path):
         try:
@@ -52,6 +68,23 @@ class SBatchRunner:
         except Exception as e:
             print(f"Error getting dataset, task, and framework from sbatch: {e}")
             return None, None, None
+
+    def get_dataset_ids_for_benchmark_suite(self, suite_name: str = "amlb_training"):
+        try:
+            suite_id = self.benchmark_suite_ids[suite_name]
+        except KeyError:
+            print(f"Suite {suite_name} not found")
+            return None
+        tasks_in_suite = openml.study.get_suite(suite_id=suite_id).tasks
+        if tasks_in_suite is not None:
+            # get dataset_ids from suites if not none
+            return [
+                self.fn_to_get_dataset_id(task)
+                for task in tasks_in_suite
+                if self.fn_to_get_dataset_id(task) is not None
+            ]
+        else:
+            return None
 
     def run_all_sbatch(self):
         sbatch_files = os.listdir(self.sbatch_script_dir)
@@ -86,6 +119,20 @@ class SBatchRunner:
                 sbatch_dataframe["framework"] == self.filter_by_framework
             ]
 
+        if self.filter_by_suite is not None:
+            dataset_ids = self.get_dataset_ids_for_benchmark_suite(
+                suite_name=self.filter_by_suite
+            )
+            if dataset_ids is not None:
+                sbatch_dataframe = sbatch_dataframe[
+                    sbatch_dataframe["dataset_id"].isin(dataset_ids)
+                ]
+            else:
+                print(f"Suite {self.filter_by_suite} not found")
+
+        if self.test_subset is not None:
+            sbatch_dataframe = sbatch_dataframe.head(self.test_subset)
+
         print(f"Running {sbatch_dataframe.shape[0]} datasets on Snellius")
 
         for sbatch_file in tqdm(sbatch_dataframe["file_path"]):
@@ -95,14 +142,18 @@ class SBatchRunner:
 args = argparse.ArgumentParser()
 args.add_argument("--username", type=str, default="smukherjee")
 args.add_argument("--filter_by_id", type=int, required=False)
+args.add_argument("--filter_by_suite", type=str, required=False)
 args.add_argument("--filter_by_framework", type=str, required=False)
-args.add_argument("--data_dir", type=str, required=False, default ="automl_data")
+args.add_argument("--data_dir", type=str, required=False, default="automl_data")
+args.add_argument("--test_subset", type=int, required=False)
 
 args = args.parse_args()
 
 sbatch_runner = SBatchRunner(
     filter_by_id=args.filter_by_id,
+    filter_by_suite=args.filter_by_suite,
     filter_by_framework=args.filter_by_framework,
+    test_subset=args.test_subset,
     data_dir=args.data_dir,
     username=args.username,
 )
