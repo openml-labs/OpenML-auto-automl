@@ -1,3 +1,4 @@
+*.out
 data/
 generated_reports/
 # Byte-compiled / optimized / DLL files
