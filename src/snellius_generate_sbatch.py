@@ -183,8 +183,10 @@ class AutoMLRunner:
                         command.extend(["-o", f"{self.results_dir}"])
                         # commands.append(" ".join(command))
                         command = " ".join(command)
-
-                    if command:  # Only create the script if there are commands to run
+                    else:
+                        return
+                    # Only create the script if there are commands to run and the path exists
+                    if command:
                         # combined_commands = "\n".join(commands)
 
                         # Create the sbatch script
