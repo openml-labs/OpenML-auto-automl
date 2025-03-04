@@ -25,7 +25,7 @@ class AutoMLRunner:
         cache_file_name="dataset_list.csv",
         results_dir="results",
         username="smukherjee",
-        automl_max_time="00:50:00",
+        automl_max_time="02:00:00",
     ):
         self.username = username
         # set all the required directories
@@ -108,11 +108,11 @@ class AutoMLRunner:
         )
         print(self.use_cache)
 
-        if self.use_cache ==False:
+        if self.use_cache == False:
             datasets.to_csv(self.cache_file_name, index=False)
             return datasets
 
-        if self.use_cache==True and os.path.exists(self.cache_file_name):
+        if self.use_cache == True and os.path.exists(self.cache_file_name):
             cached_datasets = pd.read_csv(self.cache_file_name)
 
             # append new datasets to the cache
@@ -123,10 +123,9 @@ class AutoMLRunner:
             # return new datasets
             return new_datasets
 
-        if self.use_cache ==True and not os.path.exists(self.cache_file_name):
+        if self.use_cache == True and not os.path.exists(self.cache_file_name):
             datasets.to_csv(self.cache_file_name, index=False)
             return datasets
-
 
     def get_or_create_task_from_dataset(self, dataset_id):
         """Retrieve tasks for a dataset with 10-fold Crossvalidation or try to create a task if not available."""
@@ -168,7 +167,6 @@ class AutoMLRunner:
                     )
                     # Check if the task has already been run
                     if not os.path.exists(script_path):
-
                         # Prepare the command to execute the benchmark
                         command = [
                             "yes",
@@ -208,7 +206,7 @@ cd {self.automlb_dir_in_snellius}
 {command}
 
 # Generate reports
-python {self.script_dir_in_snellius}/report_generator.py -d {dataset_id} -r {self.results_dir} -t {self.template_dir} -g {self.generated_reports_dir}
+#python {self.script_dir_in_snellius}/report_generator.py -d {dataset_id} -r {self.results_dir} -t {self.template_dir} -g {self.generated_reports_dir}
 
 source deactivate
         """
@@ -216,7 +214,7 @@ source deactivate
 
                         with open(script_path, "w") as f:
                             f.write(sbatch_script)
-                  
+
     def generate_sbatch_for_dataset_wrapper(self, args):
         self, dataset_id = args
         self.generate_sbatch_for_dataset(dataset_id)
@@ -240,7 +238,7 @@ source deactivate
 
 
 ags = argparse.ArgumentParser()
-ags.add_argument("--use_cache", "-c", action = "store_true")
+ags.add_argument("--use_cache", "-c", action="store_true")
 ags.add_argument("--run_mode", default="singularity")
 ags.add_argument("--generate_reports", "-r", action="store_true")
 ags.add_argument("--generate_sbatch", "-s", action="store_true")
@@ -259,4 +257,3 @@ runner = AutoMLRunner(
 
 if args.generate_sbatch:
     runner.generate_sbatch_for_all_datasets()
-

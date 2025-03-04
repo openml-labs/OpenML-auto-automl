@@ -2,8 +2,8 @@
 
 test:
   folds: 10
-  max_runtime_seconds: 600
-  cores: 8
+  max_runtime_seconds: 3600
+  cores: 4
 
 backup_test:
   folds: 2

@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Union
 import matplotlib.pyplot as plt
 
-class OpenMLTaskHandler:
 
+class OpenMLTaskHandler:
     def get_target_col_type(self, dataset, target_col_name):
         try:
             if dataset.features:
@@ -75,12 +75,12 @@ class OpenMLTaskHandler:
         task_id = self.get_openml_task_id_from_string(string=string)
         if task_id is not None:
             try:
-                task= openml.tasks.get_task(
+                task = openml.tasks.get_task(
                     task_id=task_id,
                     download_data=False,
                     download_qualities=False,
                 )
-                return task.get_dataset().dataset_id
+                return task.dataset_id
             except:
                 print(f"Error getting dataset id from task id: {task_id}")
                 return None

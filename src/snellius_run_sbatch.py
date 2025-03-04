@@ -51,6 +51,7 @@ class SBatchRunner:
                 dataset_id=dataset_id, task_id=task_id, framework=framework
             ):
                 full_sbatch_path = self.sbatch_script_dir / sbatch_path
+                print(full_sbatch_path)
                 os.system(f"sbatch {full_sbatch_path}")
 
                 self.sql_handler.save_run(
@@ -80,7 +81,7 @@ class SBatchRunner:
             # get dataset_ids from suites if not none
             return [
                 self.fn_to_get_dataset_id(task)
-                for task in tasks_in_suite
+                for task in tqdm(tasks_in_suite)
                 if self.fn_to_get_dataset_id(task) is not None
             ]
         else:
@@ -90,6 +91,7 @@ class SBatchRunner:
         sbatch_files = os.listdir(self.sbatch_script_dir)
         sbatch_dataframe = pd.DataFrame(columns=["file_path"])
         sbatch_dataframe["file_path"] = sbatch_files
+        print("Starting run")
 
         # check for empty dataframe
         if sbatch_dataframe.empty:
@@ -109,30 +111,37 @@ class SBatchRunner:
         sbatch_dataframe["dataset_id"] = sbatch_dataframe["dataset_id"].astype(int)
         sbatch_dataframe["task_id"] = sbatch_dataframe["task_id"].astype(int)
 
+        print(sbatch_dataframe.head())
         if self.filter_by_id is not None:
             sbatch_dataframe = sbatch_dataframe[
                 sbatch_dataframe["dataset_id"] == self.filter_by_id
             ]
 
+        print(sbatch_dataframe.head())
         if self.filter_by_framework is not None:
             sbatch_dataframe = sbatch_dataframe[
                 sbatch_dataframe["framework"] == self.filter_by_framework
             ]
 
+        print(sbatch_dataframe.head())
         if self.filter_by_suite is not None:
+            print("filtering by suite")
             dataset_ids = self.get_dataset_ids_for_benchmark_suite(
                 suite_name=self.filter_by_suite
             )
+            print(len(dataset_ids))
             if dataset_ids is not None:
                 sbatch_dataframe = sbatch_dataframe[
                     sbatch_dataframe["dataset_id"].isin(dataset_ids)
                 ]
+                print(sbatch_dataframe.head())
             else:
                 print(f"Suite {self.filter_by_suite} not found")
 
         if self.test_subset is not None:
             sbatch_dataframe = sbatch_dataframe.head(self.test_subset)
 
+        print(sbatch_dataframe.head())
         print(f"Running {sbatch_dataframe.shape[0]} datasets on Snellius")
 
         for sbatch_file in tqdm(sbatch_dataframe["file_path"]):
