@@ -7,6 +7,7 @@ from utils import OpenMLTaskHandler, SQLHandler
 import argparse
 from multiprocessing import Pool, cpu_count
 from typing import Union
+from datetime import datetime
 
 
 class AutoMLRunner:
@@ -26,6 +27,7 @@ class AutoMLRunner:
         results_dir="results",
         username="smukherjee",
         automl_max_time="00:50:00",
+        api_key="",
     ):
         self.username = username
         # set all the required directories
@@ -48,6 +50,7 @@ class AutoMLRunner:
         self.run_mode = run_mode
         self.num_tasks_to_return = num_tasks_to_return
         self.save_every_n_tasks = save_every_n_tasks
+        self.api_key = api_key
 
         self.benchmarks_to_use = [
             "autosklearn",
@@ -55,7 +58,7 @@ class AutoMLRunner:
             # "decisiontree",
             "flaml",
             "gama",
-            "h2oautoml",
+            # "h2oautoml",
             # "hyperoptsklearn",
             # "lightautoml",
             # "oboe",
@@ -106,10 +109,10 @@ class AutoMLRunner:
         datasets: pd.DataFrame = openml.datasets.list_datasets(
             output_format="dataframe"
         )
-        if self.use_cache ==False:
+        if self.use_cache == False:
             return datasets
 
-        if self.use_cache==True and os.path.exists(self.cache_file_name):
+        if self.use_cache == True and os.path.exists(self.cache_file_name):
             cached_datasets = pd.read_csv(self.cache_file_name)
 
             # append new datasets to the cache
@@ -120,11 +123,9 @@ class AutoMLRunner:
             # return new datasets
             return new_datasets
 
-        if self.use_cache ==True and not os.path.exists(self.cache_file_name):
+        if self.use_cache == True and not os.path.exists(self.cache_file_name):
             datasets.to_csv(self.cache_file_name, index=False)
             return datasets
-
-        
 
     def get_or_create_task_from_dataset(self, dataset_id):
         """Retrieve tasks for a dataset with 10-fold Crossvalidation or try to create a task if not available."""
@@ -166,7 +167,6 @@ class AutoMLRunner:
                     )
                     # Check if the task has already been run
                     if not os.path.exists(script_path):
-
                         # Prepare the command to execute the benchmark
                         command = [
                             "yes",
@@ -203,6 +203,11 @@ yes | conda activate /home/{self.username}/.conda/envs/automl
 cd {self.automlb_dir_in_snellius}
 {command}
 
+# Try to upload the runs
+for result in $(ls {self.results_dir});
+    do python {self.automlb_dir_in_snellius}/upload_results -m upload -a {self.api_key} -i $result &&     rm -rf {self.results_dir}/$result;
+done
+
 # Generate reports
 python {self.script_dir_in_snellius}/report_generator.py -d {dataset_id} -r {self.results_dir} -t {self.template_dir} -g {self.generated_reports_dir}
 
@@ -212,7 +217,8 @@ source deactivate
 
                         with open(script_path, "w") as f:
                             f.write(sbatch_script)
-                  
+                        return script_path
+
     def generate_sbatch_for_dataset_wrapper(self, args):
         self, dataset_id = args
         self.generate_sbatch_for_dataset(dataset_id)
@@ -241,13 +247,60 @@ ags.add_argument("--run_mode", default="singularity")
 ags.add_argument("--generate_reports", "-r", action="store_true")
 ags.add_argument("--generate_sbatch", "-s", action="store_true")
 ags.add_argument("--username", type=str, default="smukherjee")
+ags.add_argument(
+    "--cron_mode",
+    "-c",
+    action="store_true",
+    help="Cron mode, checks if there is are new datasets and spawns processes for them.",
+)
+ags.add_argument("--api-key", "-a", type=str, help="OpenML api key")
 args = ags.parse_args()
 
 print("Arguments: ", args)
 
-runner = AutoMLRunner(
-    use_cache=args.use_cache, run_mode=args.run_mode, username=args.username
-)
+if args.cron_mode:
+    all_datasets = openml.datasets.list_datasets(output_format="dataframe")
+    # reverse dataset
+    all_datasets = all_datasets.iloc[::-1]
+
+    new_dids = set(all_datasets["did"].values)
+
+    old_datasets_csv_path = Path("./data/dataset_list_for_cronjob.csv")
+    if not os.path.exists(old_datasets_csv_path):
+        # logging.log(logging.DEBUG, "No cache exists. Running for the first few dataset.")
+        dids_to_run = all_datasets["did"].values[:10]
+        all_datasets.to_csv(old_datasets_csv_path)
+    else:
+        # logging.log(logging.DEBUG, "Cache exists, checking for new datasets.")
+        old_dids = set(pd.read_csv(old_datasets_csv_path)["did"].values)
+
+        dids_to_run = list(old_dids - new_dids)
+
+        if len(dids_to_run) > 0:
+            print(f"Adding {len(dids_to_run)} new datasets.")
+
+    results_dir = "./temp_results/"
+    os.makedirs(results_dir, exist_ok=True)
+
+    for did in dids_to_run:
+        runner = AutoMLRunner(
+            use_cache=args.use_cache,
+            run_mode=args.run_mode,
+            username=args.username,
+            results_dir=results_dir,
+            api_key=args.api_key,
+        )
+
+        sbatch_path = runner.generate_sbatch_for_dataset(dataset_id=did)
+        # run sbatch
+        os.system(f"sbatch {sbatch_path}")
+
 
 if args.generate_sbatch:
+    runner = AutoMLRunner(
+        use_cache=args.use_cache,
+        run_mode=args.run_mode,
+        username=args.username,
+    )
+
     runner.generate_sbatch_for_all_datasets()
