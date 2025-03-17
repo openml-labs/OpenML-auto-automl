@@ -22,7 +22,7 @@ from typing import Any
 from dataclasses import dataclass
 from utils import OpenMLTaskHandler, safe_load_file
 from metric_info import MetricsFromAMLB
-
+import argparse 
 matplotlib.use("agg")
 set_visualize_provider(InlineProvider())
 
@@ -30,9 +30,10 @@ set_visualize_provider(InlineProvider())
 
 
 class ResultCollector:
-    def __init__(self, path: str = "../data/results/*"):
+    def __init__(self, path: str = "../data/results"):
         self.experiment_directory = Path(path)
-        self.all_run_paths = glob(pathname=str(self.experiment_directory))
+        # self.all_run_paths = glob(pathname=str(self.experiment_directory))
+        self.all_run_paths = list(self.experiment_directory.rglob("*"))
         self.all_results = pd.DataFrame()
         self.openml_task_handler = OpenMLTaskHandler()
         # Required columns
@@ -795,3 +796,18 @@ def run_report_script_for_dataset(
         report_gen()
     except Exception as e:
         print(f"Error generating report for dataset {dataset_id}: {str(e)}")
+
+
+args = argparse.ArgumentParser()
+args.add_argument("-d", "--dataset_id", type=int, required=True)
+args.add_argument("-r", "--result_path", type=str, required=True)
+args.add_argument("-t", "--template_dir", type=str, required=True)
+args.add_argument("-g", "--generated_reports_dir", type=str, required=True)
+args = args.parse_args()
+
+run_report_script_for_dataset(
+    GENERATED_REPORTS_DIR=args.generated_reports_dir,
+    dataset_id=args.dataset_id,
+    result_path=args.result_path,
+    template_dir=args.template_dir,
+)
