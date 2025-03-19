@@ -26,3 +26,7 @@
   - `generated_reports` contains the benchmark reports + data reports by dataset. These are stored as html files.
   - `results` contains the benchmark results with models/results and logs (as defined by automlbenchmark) in the respective folders.
   - `runs.db` is a sqlite database that stores a record of the runs and frameworks that were used.
+
+
+## Remove sif
+rm $(find . -name "Singularityfile")
