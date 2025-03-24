@@ -27,7 +27,7 @@ class AutoMLRunner:
         cache_file_name="dataset_list.csv",
         results_dir="results",
         username="smukherjee",
-        automl_max_time="00:50:00",
+        automl_max_time="02:00:00",
         api_key="",
     ):
         self.username = username
@@ -277,7 +277,7 @@ args = ags.parse_args()
 
 print("Arguments: ", args)
 
-if args.cron_mode:
+if args.cron_mode or args.c:
     all_datasets = openml.datasets.list_datasets(output_format="dataframe")
     # reverse dataset
     all_datasets = all_datasets.iloc[::-1]
@@ -295,7 +295,7 @@ if args.cron_mode:
         # logging.log(logging.DEBUG, "Cache exists, checking for new datasets.")
         old_dids = set(pd.read_csv(old_datasets_csv_path)["did"].values)
 
-        dids_to_run = list(old_dids - new_dids)
+        dids_to_run = list(new_dids - old_dids)
         dids_to_run = [int(did) for did in dids_to_run]
 
         if len(dids_to_run) > 0:
