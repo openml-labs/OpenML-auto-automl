@@ -44,7 +44,7 @@ class AutoMLRunner:
         self.sbatch_script_dir = Path(self.data_dir) / sbatch_script_dir
         self.generated_reports_dir = Path(self.data_dir) / generated_reports_dir
         self.cache_file_name = Path(self.data_dir) / cache_file_name
-        self.results_dir = Path(self.data_dir) / results_dir
+        self.results_dir = results_dir
 
         self.testing_mode = testing_mode
         self.use_cache = use_cache
@@ -222,12 +222,9 @@ class AutoMLRunner:
     {command}
 
 # Try to upload the runs
-    for result in $(ls {self.results_dir});
-        do python {self.automlb_dir_in_snellius}/upload_results.py -m upload -a {self.api_key} -i $result &&     rm -rf {self.results_dir}/$result;
+    for result in $(ls {self.results_dir});do
+        python {self.automlb_dir_in_snellius}/upload_results.py -m upload -a {self.api_key} -i "{self.results_dir}/$result"
     done
-
-# Generate reports
- #   python {self.script_dir_in_snellius}/report_generator.py -d {dataset_id} -r {self.results_dir} -t {self.template_dir} -g {self.generated_reports_dir}
 
     source deactivate
             """
@@ -301,7 +298,7 @@ if args.cron_mode or args.c:
         if len(dids_to_run) > 0:
             print(f"Adding {len(dids_to_run)} new datasets.")
 
-    results_dir = "./temp_results/"
+    results_dir = "/home/smukherjee/automl_data/temp_results/"
     os.makedirs(results_dir, exist_ok=True)
 
     for did in dids_to_run:
@@ -323,6 +320,8 @@ if args.generate_sbatch:
         use_cache=args.use_cache,
         run_mode=args.run_mode,
         username=args.username,
+        results_dir=results_dir,
+        api_key=args.api_key,
     )
 
     runner.generate_sbatch_for_all_datasets()
