@@ -811,3 +811,18 @@ run_report_script_for_dataset(
     result_path=args.result_path,
     template_dir=args.template_dir,
 )
+
+
+args = argparse.ArgumentParser()
+args.add_argument("-d", "--dataset_id", type=int, required=True)
+args.add_argument("-r", "--result_path", type=str, required=True)
+args.add_argument("-t", "--template_dir", type=str, required=True)
+args.add_argument("-g", "--generated_reports_dir", type=str, required=True)
+args = args.parse_args()
+
+run_report_script_for_dataset(
+    GENERATED_REPORTS_DIR=args.generated_reports_dir,
+    dataset_id=args.dataset_id,
+    result_path=args.result_path,
+    template_dir=args.template_dir,
+)

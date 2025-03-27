@@ -212,9 +212,9 @@ class AutoMLRunner:
 #SBATCH --mem=56G
 #SBATCH --time=0-{self.automl_max_time}
 
-    module load 2022
-    module spider Anaconda3/2022.05
-    source /sw/arch/RHEL8/EB_production/2022/software/Anaconda3/2022.05/etc/profile.d/conda.sh
+module load 2022
+module spider Anaconda3/2022.05
+source /sw/arch/RHEL8/EB_production/2022/software/Anaconda3/2022.05/etc/profile.d/conda.sh
 
     yes | conda activate /home/{self.username}/.conda/envs/automl
 
