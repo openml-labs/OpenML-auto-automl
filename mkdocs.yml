@@ -1,4 +1,4 @@
-site_name: AutoMl for all
+site_name: OpenML Auto AutoML
 theme:
   name: material
   features:
@@ -41,9 +41,8 @@ plugins:
       default_handler: python
       handlers:
         python:
-          paths: ["."]
+          paths: [openml_pytorch]
           load_external_modules: true
-          show_source: true
           options:
             docstring_section_style: table
             show_docstring_functions: true
