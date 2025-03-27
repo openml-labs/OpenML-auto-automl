@@ -35,9 +35,11 @@ class OpenMLTaskHandler:
                 if target_col_type in ["nominal", "string", "categorical"]:
                     evaluation_measure = "predictive_accuracy"
                     task_type = openml.tasks.TaskType.SUPERVISED_CLASSIFICATION
+                    class_labels = dataset.get_data()[0][target_col_name].unique()
                 elif target_col_type == "numeric":
                     evaluation_measure = "mean_absolute_error"
                     task_type = openml.tasks.TaskType.SUPERVISED_REGRESSION
+                    class_labels = []
                 else:
                     return None
 
@@ -48,6 +50,7 @@ class OpenMLTaskHandler:
                     evaluation_measure=evaluation_measure,
                     estimation_procedure_id=1,
                 )
+                task.class_labels = class_labels
                 print(f"Publishing a task: {task}")
 
                 # if self.check_if_api_key_is_valid():
