@@ -13,5 +13,10 @@
 - If this project has not shut down, you should just be able to access it by uploading a dataset to OpenML and checking back in a few hours.
 
 ## Developer configuration
-- Hello future OpenML developer, so you want to re-run/make a new version of this? Just look at the rest of this documentation
+- Hello future OpenML developer, so you want to re-run/make a new version of this? Just look at the rest of this documentation.
 
+## Contribution
+- A rather important note is that unless you are a core developer, it might be a little
+hard to contribute to this particular project BUT since a large part of this project depends more on
+[amlb](https://github.com/openml/automlbenchmark), in all
+  honesty, it makes sense to focus contributions there more than this particular library.
