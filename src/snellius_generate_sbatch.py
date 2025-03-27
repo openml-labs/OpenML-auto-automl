@@ -226,9 +226,14 @@ source /sw/arch/RHEL8/EB_production/2022/software/Anaconda3/2022.05/etc/profile.
     cd {self.automlb_dir_in_snellius}
     {command}
 
-# Try to upload the runs
+# Try to upload the runs if it has already not been uploaded
     for result in $(ls {self.results_dir});do
+        if [[ -f "{self.results_dir}/$result/.uploaded" ]]; then
+            echo "Skipping already uploaded folder: $result"
+            continue
+        fi
         python {self.automlb_dir_in_snellius}/upload_results.py -m upload -a {self.api_key} -i "{self.results_dir}/$result"
+        touch "{self.results_dir}/$result/.uploaded"
     done
 
     source deactivate
