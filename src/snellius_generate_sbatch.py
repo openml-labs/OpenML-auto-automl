@@ -93,6 +93,7 @@ class AutoMLRunner:
         self._check_run_mode()
 
     def _make_dirs(self, folders):
+        """ Make the required directories"""
         for folder in folders:
             try:
                 os.makedirs(folder, exist_ok=True)
@@ -100,6 +101,7 @@ class AutoMLRunner:
                 pass
 
     def _check_run_mode(self):
+        """ Check if the mode to run is correct """
         valid_modes = ["local", "aws", "docker", "singularity"]
         if self.run_mode not in valid_modes:
             raise ValueError(
@@ -107,6 +109,7 @@ class AutoMLRunner:
             )
 
     def _load_datasets(self):
+        """ Load all the datasets from openml and see if it was used before or not"""
         datasets: pd.DataFrame = openml.datasets.list_datasets(
             output_format="dataframe"
         )
@@ -129,7 +132,7 @@ class AutoMLRunner:
             return datasets
 
     def get_or_create_task_from_dataset(self, dataset_id, timeout=50):
-        """Retrieve tasks for a dataset with 10-fold Crossvalidation or try to create a task if not available."""
+        """Retrieve tasks for a dataset or try to create a task if not available."""
         dataset_id = int(dataset_id)
         try:
             tasks = openml.tasks.list_tasks(
@@ -145,7 +148,7 @@ class AutoMLRunner:
                 if not tasks.empty
                 else None
             )
-        except Exception as e:
+        except Exception:
             print(f"Trying to create a task for dataset {dataset_id}")
 
             with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -169,6 +172,8 @@ class AutoMLRunner:
             return [int(task_id)] if task_id else None
 
     def generate_sbatch_for_dataset(self, dataset_id):
+        """ Generate an SBATCH file that is to be run by snellius. Running this is what
+        performs all the functionality of this library. """
         # Get tasks for the dataset or create a task if not available
         task_ids = self.get_or_create_task_from_dataset(dataset_id)
 
@@ -274,6 +279,8 @@ args = ags.parse_args()
 
 print("Arguments: ", args)
 
+results_dir = "/home/smukherjee/automl_data/temp_results/"
+os.makedirs(results_dir, exist_ok=True)
 if args.cron_mode or args.c:
     all_datasets = openml.datasets.list_datasets(output_format="dataframe")
     # reverse dataset
@@ -301,9 +308,6 @@ if args.cron_mode or args.c:
             print("No new datasets")
 
         all_datasets.to_csv(old_datasets_csv_path)
-
-    results_dir = "/home/smukherjee/automl_data/temp_results/"
-    os.makedirs(results_dir, exist_ok=True)
 
     for did in dids_to_run:
         runner = AutoMLRunner(

@@ -10,7 +10,13 @@ import matplotlib.pyplot as plt
 
 
 class OpenMLTaskHandler:
+    """
+    Handles OpenML task specific features
+    """
     def get_target_col_type(self, dataset, target_col_name):
+        """
+        Get the type of the target column based on it's values
+        """
         try:
             if dataset.features:
                 return next(
@@ -26,6 +32,11 @@ class OpenMLTaskHandler:
             return None
 
     def try_create_task(self, dataset_id):
+        """
+        If a task does not exist on OpenML. find out what kind of task it can be. Either
+        classification or regression. Based on that, decide the evaluation measure and
+        labels.
+        """
         try:
             dataset = openml.datasets.get_dataset(dataset_id)
             target_col_name = dataset.default_target_attribute
@@ -67,6 +78,9 @@ class OpenMLTaskHandler:
             return None
 
     def get_openml_task_id_from_string(self, string):
+        """
+        Get the OpenML task id given that contains it
+        """
         try:
             string = str(string).strip()
             return int(string.split("/")[-1])
@@ -75,6 +89,9 @@ class OpenMLTaskHandler:
             return None
 
     def get_dataset_id_from_task_id(self, string):
+        """
+        Get the OpenML dataset id given that contains it
+        """
         task_id = self.get_openml_task_id_from_string(string=string)
         if task_id is not None:
             try:
@@ -92,6 +109,9 @@ class OpenMLTaskHandler:
 
 
 class SQLHandler:
+    """
+    Stores information about datasets run in SQL
+    """
     def __init__(self, db_path):
         self.db_path = db_path
         self.initialize_database()

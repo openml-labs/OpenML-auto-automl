@@ -41,7 +41,7 @@ plugins:
       default_handler: python
       handlers:
         python:
-          paths: [openml_pytorch]
+          paths: [src]
           load_external_modules: true
           options:
             docstring_section_style: table
