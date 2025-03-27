@@ -137,7 +137,7 @@ class AutoMLRunner:
             )
 
             # Filter tasks to only include 10-fold Crossvalidation
-            tasks = tasks[tasks["estimation_procedure"] == "10-fold Crossvalidation"]
+            # tasks = tasks[tasks["estimation_procedure"] == "10-fold Crossvalidation"]
             tasks["tid"] = tasks["tid"].astype(int)
 
             return (
@@ -297,6 +297,10 @@ if args.cron_mode or args.c:
 
         if len(dids_to_run) > 0:
             print(f"Adding {len(dids_to_run)} new datasets.")
+        else:
+            print("No new datasets")
+
+        all_datasets.to_csv(old_datasets_csv_path)
 
     results_dir = "/home/smukherjee/automl_data/temp_results/"
     os.makedirs(results_dir, exist_ok=True)
