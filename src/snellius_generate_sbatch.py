@@ -28,6 +28,7 @@ class AutoMLRunner:
         results_dir="results",
         username="smukherjee",
         automl_max_time="02:00:00",
+        just_upload_runs=False,
         api_key="",
     ):
         self.username = username
@@ -52,6 +53,7 @@ class AutoMLRunner:
         self.num_tasks_to_return = num_tasks_to_return
         self.save_every_n_tasks = save_every_n_tasks
         self.api_key = api_key
+        self.just_upload_runs = just_upload_runs
 
         self.benchmarks_to_use = [
             "autosklearn",
@@ -93,7 +95,7 @@ class AutoMLRunner:
         self._check_run_mode()
 
     def _make_dirs(self, folders):
-        """ Make the required directories"""
+        """Make the required directories"""
         for folder in folders:
             try:
                 os.makedirs(folder, exist_ok=True)
@@ -101,7 +103,7 @@ class AutoMLRunner:
                 pass
 
     def _check_run_mode(self):
-        """ Check if the mode to run is correct """
+        """Check if the mode to run is correct"""
         valid_modes = ["local", "aws", "docker", "singularity"]
         if self.run_mode not in valid_modes:
             raise ValueError(
@@ -109,7 +111,7 @@ class AutoMLRunner:
             )
 
     def _load_datasets(self):
-        """ Load all the datasets from openml and see if it was used before or not"""
+        """Load all the datasets from openml and see if it was used before or not"""
         datasets: pd.DataFrame = openml.datasets.list_datasets(
             output_format="dataframe"
         )
@@ -172,59 +174,91 @@ class AutoMLRunner:
             return [int(task_id)] if task_id else None
 
     def generate_sbatch_for_dataset(self, dataset_id):
-        """ Generate an SBATCH file that is to be run by snellius. Running this is what
-        performs all the functionality of this library. """
+        """Generate an SBATCH file that is to be run by snellius. Running this is what
+        performs all the functionality of this library."""
         # Get tasks for the dataset or create a task if not available
-        task_ids = self.get_or_create_task_from_dataset(dataset_id)
+        if not self.just_upload_runs:
+            task_ids = self.get_or_create_task_from_dataset(dataset_id)
 
-        # If it was not possible to get tasks or create a task, skip the dataset
-        if task_ids:
-            for task_id in tqdm(task_ids):
-                # commands = []
-                for benchmark in self.benchmarks_to_use:
-                    script_path = (
-                        self.sbatch_script_dir
-                        / f"{dataset_id}_{task_id}_{benchmark}.sh"
-                    )
-                    # Check if the task has already been run
-                    if not os.path.exists(script_path):
-                        # Prepare the command to execute the benchmark
-                        command = [
-                            "yes",
-                            "|",
-                            "python3",
-                            "runbenchmark.py",
-                            benchmark,
-                            f"openml/t/{task_id}",
-                            "--mode",
-                            self.run_mode,
-                        ]
-                        command.extend(["-o", f"{self.results_dir}"])
-                        # commands.append(" ".join(command))
-                        command = " ".join(command)
+            # If it was not possible to get tasks or create a task, skip the dataset
+            if task_ids:
+                for task_id in tqdm(task_ids):
+                    # commands = []
+                    for benchmark in self.benchmarks_to_use:
+                        script_path = (
+                            self.sbatch_script_dir
+                            / f"{dataset_id}_{task_id}_{benchmark}.sh"
+                        )
+                        # Check if the task has already been run
+                        if not os.path.exists(script_path):
+                            # Prepare the command to execute the benchmark
+                            command = [
+                                "yes",
+                                "|",
+                                "python3",
+                                "runbenchmark.py",
+                                benchmark,
+                                f"openml/t/{task_id}",
+                                "--mode",
+                                self.run_mode,
+                            ]
+                            command.extend(["-o", f"{self.results_dir}"])
+                            # commands.append(" ".join(command))
+                            command = " ".join(command)
 
-                        if (
-                            command
-                        ):  # Only create the script if there are commands to run
-                            # combined_commands = "\n".join(commands)
+                            if (
+                                command
+                            ):  # Only create the script if there are commands to run
+                                # combined_commands = "\n".join(commands)
 
-                            # Create the sbatch script
-                            sbatch_script = f"""#!/bin/bash
+                                # Create the sbatch script
+                                sbatch_script = f"""#!/bin/bash
+    #SBATCH --nodes=1
+    #SBATCH --ntasks=1
+    #SBATCH --cpus-per-task=16
+    #SBATCH --partition=genoa
+    #SBATCH --mem=56G
+    #SBATCH --time=0-{self.automl_max_time}
+
+    module load 2022
+    module spider Anaconda3/2022.05
+    source /sw/arch/RHEL8/EB_production/2022/software/Anaconda3/2022.05/etc/profile.d/conda.sh
+
+        yes | conda activate /home/{self.username}/.conda/envs/automl
+
+        cd {self.automlb_dir_in_snellius}
+        {command}
+
+    # Try to upload the runs if it has already not been uploaded
+        for result in $(ls {self.results_dir});do
+            if [[ -f "{self.results_dir}/$result/.uploaded" ]]; then
+                echo "Skipping already uploaded folder: $result"
+                continue
+            fi
+            python {self.automlb_dir_in_snellius}/upload_results.py -m upload -a {self.api_key} -i "{self.results_dir}/$result"
+            touch "{self.results_dir}/$result/.uploaded"
+        done
+
+                """
+                                # Save the sbatch script to a file
+
+                                with open(script_path, "w") as f:
+                                    f.write(sbatch_script)
+                                print(sbatch_script)
+                                return script_path
+        else:
+            sbatch_script = f"""#!/bin/bash
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
 #SBATCH --partition=genoa
 #SBATCH --mem=56G
 #SBATCH --time=0-{self.automl_max_time}
-
 module load 2022
 module spider Anaconda3/2022.05
 source /sw/arch/RHEL8/EB_production/2022/software/Anaconda3/2022.05/etc/profile.d/conda.sh
-
     yes | conda activate /home/{self.username}/.conda/envs/automl
-
     cd {self.automlb_dir_in_snellius}
-    {command}
 
 # Try to upload the runs if it has already not been uploaded
     for result in $(ls {self.results_dir});do
@@ -236,14 +270,13 @@ source /sw/arch/RHEL8/EB_production/2022/software/Anaconda3/2022.05/etc/profile.
         touch "{self.results_dir}/$result/.uploaded"
     done
 
-    source deactivate
-            """
-                            # Save the sbatch script to a file
+    """
 
-                            with open(script_path, "w") as f:
-                                f.write(sbatch_script)
-                            print(sbatch_script)
-                            return script_path
+            # Save the sbatch script to a file
+            script_path = self.sbatch_script_dir / f"just_uploading.sh"
+            with open(script_path, "w") as f:
+                f.write(sbatch_script)
+            return script_path
 
     def generate_sbatch_for_dataset_wrapper(self, args):
         self, dataset_id = args
@@ -273,6 +306,7 @@ ags.add_argument("--run_mode", default="singularity")
 ags.add_argument("--generate_reports", "-r", action="store_true")
 ags.add_argument("--generate_sbatch", "-s", action="store_true")
 ags.add_argument("--username", type=str, default="smukherjee")
+ags.add_argument("--just_upload_runs", "-j", action="store_true")
 ags.add_argument(
     "--cron_mode",
     "-c",
@@ -314,18 +348,22 @@ if args.cron_mode or args.c:
 
         all_datasets.to_csv(old_datasets_csv_path)
 
-    for did in dids_to_run:
-        runner = AutoMLRunner(
-            use_cache=args.use_cache,
-            run_mode=args.run_mode,
-            username=args.username,
-            results_dir=results_dir,
-            api_key=args.api_key,
-        )
-
-        sbatch_path = runner.generate_sbatch_for_dataset(dataset_id=did)
-        # run sbatch
+    runner = AutoMLRunner(
+        use_cache=args.use_cache,
+        run_mode=args.run_mode,
+        username=args.username,
+        results_dir=results_dir,
+        api_key=args.api_key,
+        just_upload_runs=args.just_upload_runs,
+    )
+    if args.just_upload_runs:
+        sbatch_path = runner.generate_sbatch_for_dataset(dataset_id=0)
         os.system(f"sbatch {sbatch_path}")
+    else:
+        for did in dids_to_run:
+            sbatch_path = runner.generate_sbatch_for_dataset(dataset_id=did)
+            # run sbatch
+            os.system(f"sbatch {sbatch_path}")
 
 
 if args.generate_sbatch:
@@ -335,6 +373,8 @@ if args.generate_sbatch:
         username=args.username,
         results_dir=results_dir,
         api_key=args.api_key,
+        just_upload_runs=args.just_upload_runs,
     )
 
     runner.generate_sbatch_for_all_datasets()
+
