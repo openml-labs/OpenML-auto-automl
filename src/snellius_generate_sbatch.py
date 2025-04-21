@@ -174,24 +174,21 @@ class AutoMLRunner:
             return [int(task_id)] if task_id else None
 
     def generate_sbatch_for_dataset(self, dataset_id):
-        """Generate an SBATCH file that is to be run by snellius. Running this is what
-        performs all the functionality of this library."""
-        # Get tasks for the dataset or create a task if not available
+        """Generate SBATCH files for all selected benchmarks for a given dataset."""
+        generated_scripts = []
+
         if not self.just_upload_runs:
             task_ids = self.get_or_create_task_from_dataset(dataset_id)
 
-            # If it was not possible to get tasks or create a task, skip the dataset
             if task_ids:
                 for task_id in tqdm(task_ids):
-                    # commands = []
                     for benchmark in self.benchmarks_to_use:
                         script_path = (
                             self.sbatch_script_dir
                             / f"{dataset_id}_{task_id}_{benchmark}.sh"
                         )
-                        # Check if the task has already been run
+
                         if not os.path.exists(script_path):
-                            # Prepare the command to execute the benchmark
                             command = [
                                 "yes",
                                 "|",
@@ -203,16 +200,9 @@ class AutoMLRunner:
                                 self.run_mode,
                             ]
                             command.extend(["-o", f"{self.results_dir}"])
-                            # commands.append(" ".join(command))
                             command = " ".join(command)
 
-                            if (
-                                command
-                            ):  # Only create the script if there are commands to run
-                                # combined_commands = "\n".join(commands)
-
-                                # Create the sbatch script
-                                sbatch_script = f"""#!/bin/bash
+                            sbatch_script = f"""#!/bin/bash
     #SBATCH --nodes=1
     #SBATCH --ntasks=1
     #SBATCH --cpus-per-task=16
@@ -224,44 +214,13 @@ class AutoMLRunner:
     module spider Anaconda3/2022.05
     source /sw/arch/RHEL8/EB_production/2022/software/Anaconda3/2022.05/etc/profile.d/conda.sh
 
-        yes | conda activate /home/{self.username}/.conda/envs/automl
-
-        cd {self.automlb_dir_in_snellius}
-        {command}
-
-    # Try to upload the runs if it has already not been uploaded
-        for result in $(ls {self.results_dir});do
-            if [[ -f "{self.results_dir}/$result/.uploaded" ]]; then
-                echo "Skipping already uploaded folder: $result"
-                continue
-            fi
-            python {self.automlb_dir_in_snellius}/upload_results.py -m upload -a {self.api_key} -i "{self.results_dir}/$result"
-            touch "{self.results_dir}/$result/.uploaded"
-        done
-
-                """
-                                # Save the sbatch script to a file
-
-                                with open(script_path, "w") as f:
-                                    f.write(sbatch_script)
-                                print(sbatch_script)
-                                return script_path
-        else:
-            sbatch_script = f"""#!/bin/bash
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
-#SBATCH --cpus-per-task=16
-#SBATCH --partition=genoa
-#SBATCH --mem=56G
-#SBATCH --time=0-{self.automl_max_time}
-module load 2022
-module spider Anaconda3/2022.05
-source /sw/arch/RHEL8/EB_production/2022/software/Anaconda3/2022.05/etc/profile.d/conda.sh
     yes | conda activate /home/{self.username}/.conda/envs/automl
-    cd {self.automlb_dir_in_snellius}
 
-# Try to upload the runs if it has already not been uploaded
-    for result in $(ls {self.results_dir});do
+    cd {self.automlb_dir_in_snellius}
+    {command}
+
+    # Try to upload the runs if they haven't already been uploaded
+    for result in $(ls {self.results_dir}); do
         if [[ -f "{self.results_dir}/$result/.uploaded" ]]; then
             echo "Skipping already uploaded folder: $result"
             continue
@@ -269,13 +228,46 @@ source /sw/arch/RHEL8/EB_production/2022/software/Anaconda3/2022.05/etc/profile.
         python {self.automlb_dir_in_snellius}/upload_results.py -m upload -a {self.api_key} -i "{self.results_dir}/$result"
         touch "{self.results_dir}/$result/.uploaded"
     done
-
     """
 
-            # Save the sbatch script to a file
-            script_path = self.sbatch_script_dir / f"just_uploading.sh"
+                            with open(script_path, "w") as f:
+                                f.write(sbatch_script)
+                            print(f"Generated script for {benchmark} at {script_path}")
+                            generated_scripts.append(script_path)
+            return generated_scripts if generated_scripts else None
+
+        else:
+            script_path = self.sbatch_script_dir / "just_uploading.sh"
+            sbatch_script = f"""#!/bin/bash
+    #SBATCH --nodes=1
+    #SBATCH --ntasks=1
+    #SBATCH --cpus-per-task=16
+    #SBATCH --partition=genoa
+    #SBATCH --mem=56G
+    #SBATCH --time=0-{self.automl_max_time}
+
+    module load 2022
+    module spider Anaconda3/2022.05
+    source /sw/arch/RHEL8/EB_production/2022/software/Anaconda3/2022.05/etc/profile.d/conda.sh
+
+    yes | conda activate /home/{self.username}/.conda/envs/automl
+
+    cd {self.automlb_dir_in_snellius}
+
+    # Try to upload the runs if they haven't already been uploaded
+    for result in $(ls {self.results_dir}); do
+        if [[ -f "{self.results_dir}/$result/.uploaded" ]]; then
+            echo "Skipping already uploaded folder: $result"
+            continue
+        fi
+        python {self.automlb_dir_in_snellius}/upload_results.py -m upload -a {self.api_key} -i "{self.results_dir}/$result"
+        touch "{self.results_dir}/$result/.uploaded"
+    done
+    """
+
             with open(script_path, "w") as f:
                 f.write(sbatch_script)
+            print(f"Generated just-upload script at {script_path}")
             return script_path
 
     def generate_sbatch_for_dataset_wrapper(self, args):
@@ -377,4 +369,3 @@ if args.generate_sbatch:
     )
 
     runner.generate_sbatch_for_all_datasets()
-
