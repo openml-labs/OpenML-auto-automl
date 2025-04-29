@@ -1,0 +1,10 @@
+mkdocs-material
+mkdocs-material-extensions
+mkdocs-jupyter
+mkdocs-redirects
+mkdocs-autorefs
+mkdocs-awesome-pages-plugin
+mkdocstrings
+mkdocstrings-python
+mknotebooks
+
