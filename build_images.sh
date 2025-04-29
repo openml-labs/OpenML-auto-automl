@@ -22,7 +22,7 @@ yes | conda activate /home/$usertouse/.conda/envs/automl
 pip install --user -r /home/$usertouse/OpenML-auto-automl/requirements.txt
 
 # Define list of frameworks
-frameworks=("autosklearn" "flaml" "gama")
+frameworks=("flaml" "autosklearn" "gama")
 # frameworks=("h2oautoml")
 
 cd /home/$usertouse/automlbenchmark/
@@ -30,5 +30,5 @@ cd /home/$usertouse/automlbenchmark/
 # Run benchmarks
 for framework in "${frameworks[@]}"; do
   echo $framework
-  yes | python runbenchmark.py "$framework" openml/t/3812 --mode "$mode" --setup only -o /home/$usertouse/automl_data/results
+  yes | python runbenchmark.py "$framework" openml/t/3812 --mode "$mode" --setup only -o /home/$usertouse/automl_data/results --force
 done

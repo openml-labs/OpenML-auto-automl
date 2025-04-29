@@ -56,11 +56,11 @@ class AutoMLRunner:
         self.just_upload_runs = just_upload_runs
 
         self.benchmarks_to_use = [
-            "autosklearn",
+            "flaml",
+             "autosklearn",
             # "autoweka",
             # "decisiontree",
-            "flaml",
-            "gama",
+             "gama",
             # "h2oautoml",
             # "hyperoptsklearn",
             # "lightautoml",
@@ -221,12 +221,12 @@ class AutoMLRunner:
 
     # Try to upload the runs if they haven't already been uploaded
     for result in $(ls {self.results_dir}); do
-        if [[ -f "{self.results_dir}/$result/.uploaded" ]]; then
+        if [[ -f "{self.results_dir}$result/.uploaded" ]]; then
             echo "Skipping already uploaded folder: $result"
             continue
         fi
-        python {self.automlb_dir_in_snellius}/upload_results.py -m upload -a {self.api_key} -i "{self.results_dir}/$result"
-        touch "{self.results_dir}/$result/.uploaded"
+        python {self.automlb_dir_in_snellius}/upload_results.py -m upload -a {self.api_key} -i "{self.results_dir}$result"
+        touch "{self.results_dir}$result/.uploaded"
     done
     """
 
@@ -234,7 +234,7 @@ class AutoMLRunner:
                                 f.write(sbatch_script)
                             print(f"Generated script for {benchmark} at {script_path}")
                             generated_scripts.append(script_path)
-            return generated_scripts if generated_scripts else None
+            return generated_scripts
 
         else:
             script_path = self.sbatch_script_dir / "just_uploading.sh"
@@ -256,12 +256,12 @@ class AutoMLRunner:
 
     # Try to upload the runs if they haven't already been uploaded
     for result in $(ls {self.results_dir}); do
-        if [[ -f "{self.results_dir}/$result/.uploaded" ]]; then
+        if [[ -f "{self.results_dir}$result/.uploaded" ]]; then
             echo "Skipping already uploaded folder: $result"
             continue
         fi
-        python {self.automlb_dir_in_snellius}/upload_results.py -m upload -a {self.api_key} -i "{self.results_dir}/$result"
-        touch "{self.results_dir}/$result/.uploaded"
+        python {self.automlb_dir_in_snellius}/upload_results.py -m upload -a {self.api_key} -i "{self.results_dir}$result"
+        touch "{self.results_dir}$result/.uploaded"
     done
     """
 
@@ -353,9 +353,12 @@ if args.cron_mode or args.c:
         os.system(f"sbatch {sbatch_path}")
     else:
         for did in dids_to_run:
-            sbatch_path = runner.generate_sbatch_for_dataset(dataset_id=did)
+            sbatch_paths = runner.generate_sbatch_for_dataset(dataset_id=did)
             # run sbatch
-            os.system(f"sbatch {sbatch_path}")
+            if isinstance(sbatch_paths, list):
+                for sbatch_path in sbatch_paths:
+                    os.system(f"sbatch {str(sbatch_path)}")
+            
 
 
 if args.generate_sbatch:
